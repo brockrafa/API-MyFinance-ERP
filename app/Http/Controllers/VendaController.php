@@ -21,8 +21,17 @@ class VendaController extends Controller
             'cliente:id,nome',
             'formaPagamento:id,descricao',
             'produtos',
-        ])->select('id', 'cliente_id', 'data_venda', 'total', 'forma_pagamento_id')
+            'lancamentos:id,venda_id,valor,valor_pago,status',
+        ])->select('id', 'cliente_id', 'data_venda', 'total', 'forma_pagamento_id', 'tipo_venda')
           ->get();
+
+        $vendas->each(function ($venda) {
+            $venda->valor_pago = $venda->lancamentos->sum(function ($lancamento) {
+                return $lancamento->status === 'pago' ? $lancamento->valor_pago : 0;
+            });
+            $venda->valor_pendente = max($venda->total - $venda->valor_pago, 0);
+            $venda->unsetRelation('lancamentos');
+        });
 
         return response()->json($vendas, Response::HTTP_OK);
     }
@@ -69,6 +78,11 @@ class VendaController extends Controller
                 'errors' => "Venda com id {$id} não existe."
             ], Response::HTTP_NOT_FOUND);
         }
+
+        $venda->valor_pago = $venda->lancamentos->sum(function ($lancamento) {
+            return $lancamento->status === 'pago' ? $lancamento->valor_pago : 0;
+        });
+        $venda->valor_pendente = max($venda->total - $venda->valor_pago, 0);
 
         return response()->json($venda, Response::HTTP_OK);
     }
