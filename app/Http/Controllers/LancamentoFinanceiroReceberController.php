@@ -11,7 +11,7 @@ use Carbon\Carbon;
 
 class LancamentoFinanceiroReceberController extends Controller
 {
-    public function index(Request $request)
+  public function index(Request $request)
     {
         $mes = $request->query('mes', now()->format('Y-m'));
 
@@ -20,19 +20,29 @@ class LancamentoFinanceiroReceberController extends Controller
                 'venda:id,data_venda,tipo_venda,total,parcelas,valor_parcela,entrada,forma_pagamento_id',
             ])
             ->whereRaw("DATE_FORMAT(data_vencimento, '%Y-%m') = ? and tipo = 'entrada'", [$mes])
-            //->whereRaw("tipo = 'entrada'")
             ->orderBy('data_vencimento')
             ->get();
 
         $vendaIds = $lancamentos->pluck('venda_id')->unique();
-        $counts   = ItemVenda::whereIn('venda_id', $vendaIds)
+
+        $counts = ItemVenda::whereIn('venda_id', $vendaIds)
             ->select('venda_id', DB::raw('COUNT(*) as itens_count'))
             ->groupBy('venda_id')
             ->pluck('itens_count', 'venda_id');
 
-        $lancamentos->each(function ($lancamento) use ($counts) {
+            
+        $itens = ItemVenda::whereIn('venda_id', $vendaIds)
+            ->with(['produto:id,produto', 'servico:id,servico'])
+            ->get()
+            ->groupBy('venda_id');
+
+        $lancamentos->each(function ($lancamento) use ($counts, $itens) {
             if ($lancamento->venda) {
                 $lancamento->venda->itens_count = $counts[$lancamento->venda_id] ?? 0;
+
+                $lancamento->venda->itens_descricao = optional($itens->get($lancamento->venda_id))
+                    ->map(fn ($item) => $item->produto->produto ?? $item->servico->servico ?? 'Item')
+                    ->implode(', ');
             }
 
             if ($lancamento->status === 'pendente' && $lancamento->data_vencimento->isPast()) {
@@ -43,7 +53,6 @@ class LancamentoFinanceiroReceberController extends Controller
 
         return response()->json($lancamentos, Response::HTTP_OK);
     }
-
     public function show($id)
     {
         $lancamento = LancamentoFinanceiro::with([
