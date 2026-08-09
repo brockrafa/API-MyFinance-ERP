@@ -39,6 +39,11 @@ class RolePermissionDefinitions
                 'cadastros.categorias.edit',
                 'cadastros.categorias.delete',
 
+                'agenda.view',
+                'agenda.create',
+                'agenda.edit',
+                'agenda.delete',
+
                 'vendas.view',
                 'vendas.create',
                 'vendas.edit',
@@ -70,6 +75,10 @@ class RolePermissionDefinitions
                 'cadastros.produtos.view',
                 'cadastros.categorias.view',
                 'cadastros.formas-pagamento.view',
+                'agenda.view',
+                'agenda.create',
+                'agenda.edit',
+                'agenda.delete',
             ],
             'vendedor' => [
                 'cadastros.clientes.view',

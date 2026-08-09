@@ -13,6 +13,7 @@ use App\Http\Controllers\ContaPagarController;
 use App\Http\Controllers\DespesaRecorrenteController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\RoleController;
+use App\Http\Controllers\AgendaController;
 
 Route::middleware('auth:sanctum')->group(function () {
 
@@ -104,6 +105,23 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::resource('vendas', VendaController::class)
         ->only(['destroy'])
         ->middleware('permission:vendas.delete');
+
+    // ── Agenda ────────────────────────────────────
+    Route::resource('agendas', AgendaController::class)
+        ->only(['index', 'show'])
+        ->middleware('permission:agenda.view');
+
+    Route::resource('agendas', AgendaController::class)
+        ->only(['store'])
+        ->middleware('permission:agenda.create');
+
+    Route::resource('agendas', AgendaController::class)
+        ->only(['update'])
+        ->middleware('permission:agenda.edit');
+
+    Route::resource('agendas', AgendaController::class)
+        ->only(['destroy'])
+        ->middleware('permission:agenda.delete');
 
     // ── Forma de Pagamento ────────────────────────
     Route::resource('forma-pagamento', FormaPagamentoController::class)

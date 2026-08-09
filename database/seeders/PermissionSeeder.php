@@ -56,6 +56,12 @@ class PermissionSeeder extends Seeder
             // Cadastros - Empresas
             'cadastros.empresas.create',
 
+            // Agenda
+            'agenda.view',
+            'agenda.create',
+            'agenda.edit',
+            'agenda.delete',
+
             // Vendas
             'vendas.view',
             'vendas.create',

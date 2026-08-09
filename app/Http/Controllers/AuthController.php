@@ -133,10 +133,9 @@ class AuthController extends Controller
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($empresaId);
 
-        // Se uma role foi enviada, nós a atribuímos
-        if (!empty($validado['role'])) {
-            $user->assignRole($validado['role']);
-        }
+        // Atribui uma role base para todos os usuários. Se nenhuma role vier, usa 'usuario'.
+        $roleParaAtribuir = !empty($validado['role']) ? $validado['role'] : 'usuario';
+        $user->assignRole($roleParaAtribuir);
 
         // Sincronizar permissões customizadas diretas (mesmo se vier vazio, é seguro)
         if (isset($validado['permissions'])) {
@@ -188,16 +187,14 @@ class AuthController extends Controller
             
             // Se a chave 'role' veio na requisição...
             if (array_key_exists('role', $validado)) {
-                if (empty($validado['role'])) {
-                    // Se veio vazia, remove todas as roles (usuário vira customizado)
-                    $user->syncRoles([]);
-                } else {
-                    // Previne que alguém escale para admin sem ser admin
-                    if($validado['role'] === 'admin' && !$request->user()->hasRole('admin')) {
-                        return response()->json(['message' => 'Apenas admins podem promover alguém a admin.'], 403);
-                    }
-                    $user->syncRoles([$validado['role']]);
+                $roleParaAtribuir = !empty($validado['role']) ? $validado['role'] : 'usuario';
+
+                // Previne que alguém escale para admin sem ser admin
+                if($roleParaAtribuir === 'admin' && !$request->user()->hasRole('admin')) {
+                    return response()->json(['message' => 'Apenas admins podem promover alguém a admin.'], 403);
                 }
+
+                $user->syncRoles([$roleParaAtribuir]);
             }
 
             // Sincronizar permissões customizadas (seja adicionando ou limpando o array)
