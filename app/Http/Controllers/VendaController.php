@@ -8,6 +8,9 @@ use App\Models\Produto;
 use App\Models\ItemVenda;
 use App\Models\Servico;
 use App\Models\LancamentoFinanceiro;
+use App\Models\Estoque;
+use App\Models\EstoqueSaldo;
+use App\Services\EstoqueService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
@@ -40,10 +43,16 @@ class VendaController extends Controller
     {
         DB::beginTransaction();
         try {
+            $request->validate([
+                'estoque_id' => ['required', 'integer', 'exists:estoques,id'],
+                'produtos' => ['required', 'array', 'min:1'],
+                'produtos.*.valor' => ['required', 'numeric', 'min:0'],
+            ]);
             $this->validarCliente($request->cliente_id);
 
             $venda = $this->criarVenda($request);
             $this->salvarItens($request->produtos, $venda);
+            app(EstoqueService::class)->baixarVenda($venda, Estoque::findOrFail($request->estoque_id));
             $this->aplicarCondicaoPagamento($request, $venda);
             $venda->save();
 
@@ -154,6 +163,7 @@ class VendaController extends Controller
     {
         $venda = new Venda();
         $venda->cliente_id        = $request->cliente_id;
+        $venda->estoque_id        = $request->estoque_id;
         $venda->total             = 0;
         $venda->forma_pagamento_id = $request->forma_pagamento['id'];
         $venda->data_venda        = $request->filled('data_venda') ? $request->data_venda : now()->toDateString();
@@ -176,11 +186,16 @@ class VendaController extends Controller
             $item->venda_id      = $venda->id;
             $item->tipo          = $produto['tipo'];
             $item->quantidade    = $produto['quantidade'];
-            $item->valor_unitario = $produto['valor'];
+            $item->valor_unitario = (float) $produto['valor'];
 
             if ($produto['tipo'] === 'servico') {
                 $item->servico_id = $produto['id'];
             } else {
+                $saldo = EstoqueSaldo::query()
+                    ->where('estoque_id', $venda->estoque_id)
+                    ->where('produto_id', $model->id)
+                    ->first();
+                $item->custo_unitario = (float) ($saldo?->custo_medio ?? 0);
                 $item->produto_id = $produto['id'];
             }
 

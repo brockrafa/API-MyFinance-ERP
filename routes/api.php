@@ -14,6 +14,10 @@ use App\Http\Controllers\DespesaRecorrenteController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\AgendaController;
+use App\Http\Controllers\EstoqueController;
+use App\Http\Controllers\EntradaEstoqueController;
+use App\Http\Controllers\TransferenciaEstoqueController;
+use App\Http\Controllers\BaixaEstoqueController;
 
 Route::middleware('auth:sanctum')->group(function () {
 
@@ -54,6 +58,44 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::resource('produtos', ProdutoController::class)
         ->only(['destroy'])
         ->middleware('permission:cadastros.produtos.delete');
+
+    // ── Estoques ──────────────────────────────────
+    Route::resource('estoques', EstoqueController::class)
+        ->only(['index', 'show'])
+        ->middleware('permission:cadastros.produtos.view');
+
+    Route::get('/estoques/{estoque}/dashboard', [EstoqueController::class, 'dashboard'])
+        ->middleware('permission:cadastros.produtos.view');
+
+    Route::post('/estoques/{estoque}/validar-saldos', [EstoqueController::class, 'validarSaldos'])
+        ->middleware('permission:cadastros.produtos.view');
+
+    Route::get('/estoques/{estoque}/movimentos', [EstoqueController::class, 'movimentos'])
+        ->middleware('permission:cadastros.produtos.view');
+
+    Route::delete('/estoques/movimentos/{movimento}', [EstoqueController::class, 'destroyMovimento'])
+        ->middleware('permission:cadastros.produtos.delete');
+
+    Route::resource('estoques', EstoqueController::class)
+        ->only(['store'])
+        ->middleware('permission:cadastros.produtos.create');
+
+    Route::resource('estoques', EstoqueController::class)
+        ->only(['update'])
+        ->middleware('permission:cadastros.produtos.edit');
+
+    Route::resource('estoques', EstoqueController::class)
+        ->only(['destroy'])
+        ->middleware('permission:cadastros.produtos.delete');
+
+    Route::post('/estoques/{estoque}/entradas', [EntradaEstoqueController::class, 'store'])
+        ->middleware('permission:cadastros.produtos.create');
+
+    Route::post('/estoques/{estoque}/baixas', [BaixaEstoqueController::class, 'store'])
+        ->middleware('permission:cadastros.produtos.edit');
+
+    Route::post('/transferencias-estoque', [TransferenciaEstoqueController::class, 'store'])
+        ->middleware('permission:cadastros.produtos.edit');
 
     // ── Categorias ────────────────────────────────
     Route::resource('categorias', CategoriaController::class)

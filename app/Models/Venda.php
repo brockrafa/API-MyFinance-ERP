@@ -11,7 +11,12 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Venda extends Model
 {
     use HasFactory, HasEmpresaScope;
-    protected $fillable = ['cliente_id', 'total', 'forma_pagamento', 'data_venda', 'tipo_venda','parcelas','entrada','valor_parcela','primeiro_vencimento','empresa_id'];
+    protected $fillable = ['cliente_id', 'estoque_id', 'total', 'forma_pagamento', 'data_venda', 'tipo_venda','parcelas','entrada','valor_parcela','primeiro_vencimento','empresa_id'];
+
+    public function estoque()
+    {
+        return $this->belongsTo(Estoque::class);
+    }
 
     public function produtos()
     {

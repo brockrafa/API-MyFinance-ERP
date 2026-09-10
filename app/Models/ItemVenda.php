@@ -10,7 +10,14 @@ class ItemVenda extends Model
 {
     use HasFactory, HasEmpresaScope;
     public $timestamps = false;
-    protected $fillable = ['venda_id', 'produto_id','servico_id','quantidade', 'valor_unitario','empresa_id'];
+    protected $fillable = ['venda_id', 'produto_id','servico_id','quantidade', 'valor_unitario', 'custo_unitario', 'custo_total', 'empresa_id'];
+
+    protected $casts = [
+        'quantidade' => 'integer',
+        'valor_unitario' => 'decimal:2',
+        'custo_unitario' => 'decimal:4',
+        'custo_total' => 'decimal:4',
+    ];
 
     public function produto()
     {
