@@ -17,8 +17,10 @@ class AgendaItem extends Model
         'produto_id',
         'servico_id',
         'tipo',
+        'descricao',
         'quantidade',
         'valor_unitario',
+        'valor_total',
     ];
 
     public function agenda()

@@ -11,7 +11,11 @@ class ServicoController extends Controller
     private $validacaoPadrao = [
         'servico' => 'required|min:4',
         'valor' => 'required|numeric',
-        'categoria' => 'required|integer'
+        'categoria' => 'required|integer',
+        'duracao_minutos' => 'nullable|integer|min:1',
+        'preco_base_operacional' => 'nullable|numeric|min:0',
+        'valor_venda' => 'nullable|numeric|min:0',
+        'gera_agendamento' => 'sometimes|boolean',
     ];
 
     public function index()

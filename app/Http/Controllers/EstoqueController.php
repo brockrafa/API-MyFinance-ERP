@@ -45,15 +45,26 @@ class EstoqueController extends Controller
         );
     }
 
-    public function movimentos(Estoque $estoque)
+    public function movimentos(Estoque $estoque, Request $request)
     {
+        $filtros = $request->validate([
+            'produto_id' => ['nullable', 'integer', 'exists:produtos,id'],
+            'tipo' => ['nullable', 'string'],
+            'data_inicio' => ['nullable', 'date'],
+            'data_fim' => ['nullable', 'date'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+        ]);
+
         $movimentos = MovimentoEstoque::query()
             ->where('estoque_id', $estoque->id)
+            ->when($filtros['produto_id'] ?? null, fn ($query, $produtoId) => $query->where('produto_id', $produtoId))
+            ->when($filtros['tipo'] ?? null, fn ($query, $tipo) => $query->where('tipo', $tipo))
+            ->when($filtros['data_inicio'] ?? null, fn ($query, $data) => $query->whereDate('movimentado_em', '>=', $data))
+            ->when($filtros['data_fim'] ?? null, fn ($query, $data) => $query->whereDate('movimentado_em', '<=', $data))
             ->with(['produto', 'usuario'])
             ->latest('movimentado_em')
             ->latest('id')
-            ->limit(100)
-            ->get();
+            ->paginate($filtros['per_page'] ?? 20);
 
         return MovimentoEstoqueResource::collection($movimentos);
     }
@@ -103,7 +114,7 @@ class EstoqueController extends Controller
 
     public function destroyMovimento(MovimentoEstoque $movimento)
     {
-        $movimento->delete();
+        $this->estoqueService->estornarMovimento($movimento);
 
         return response()->json(['success' => true], Response::HTTP_NO_CONTENT);
     }

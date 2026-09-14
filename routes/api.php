@@ -12,8 +12,10 @@ use App\Http\Controllers\LancamentoFinanceiroPagarController;
 use App\Http\Controllers\ContaPagarController;
 use App\Http\Controllers\DespesaRecorrenteController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\EmpresaController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\AgendaController;
+use App\Http\Controllers\ProfissionalController;
 use App\Http\Controllers\EstoqueController;
 use App\Http\Controllers\EntradaEstoqueController;
 use App\Http\Controllers\TransferenciaEstoqueController;
@@ -62,40 +64,40 @@ Route::middleware('auth:sanctum')->group(function () {
     // ── Estoques ──────────────────────────────────
     Route::resource('estoques', EstoqueController::class)
         ->only(['index', 'show'])
-        ->middleware('permission:cadastros.produtos.view');
+        ->middleware('permission:estoque.view');
 
     Route::get('/estoques/{estoque}/dashboard', [EstoqueController::class, 'dashboard'])
-        ->middleware('permission:cadastros.produtos.view');
+        ->middleware('permission:estoque.view');
 
     Route::post('/estoques/{estoque}/validar-saldos', [EstoqueController::class, 'validarSaldos'])
-        ->middleware('permission:cadastros.produtos.view');
+        ->middleware('permission:estoque.view');
 
     Route::get('/estoques/{estoque}/movimentos', [EstoqueController::class, 'movimentos'])
-        ->middleware('permission:cadastros.produtos.view');
+        ->middleware('permission:estoque.view');
 
     Route::delete('/estoques/movimentos/{movimento}', [EstoqueController::class, 'destroyMovimento'])
-        ->middleware('permission:cadastros.produtos.delete');
+        ->middleware('permission:estoque.delete');
 
     Route::resource('estoques', EstoqueController::class)
         ->only(['store'])
-        ->middleware('permission:cadastros.produtos.create');
+        ->middleware('permission:estoque.create');
 
     Route::resource('estoques', EstoqueController::class)
         ->only(['update'])
-        ->middleware('permission:cadastros.produtos.edit');
+        ->middleware('permission:estoque.edit');
 
     Route::resource('estoques', EstoqueController::class)
         ->only(['destroy'])
-        ->middleware('permission:cadastros.produtos.delete');
+        ->middleware('permission:estoque.delete');
 
     Route::post('/estoques/{estoque}/entradas', [EntradaEstoqueController::class, 'store'])
-        ->middleware('permission:cadastros.produtos.create');
+        ->middleware('permission:estoque.create');
 
     Route::post('/estoques/{estoque}/baixas', [BaixaEstoqueController::class, 'store'])
-        ->middleware('permission:cadastros.produtos.edit');
+        ->middleware('permission:estoque.edit');
 
     Route::post('/transferencias-estoque', [TransferenciaEstoqueController::class, 'store'])
-        ->middleware('permission:cadastros.produtos.edit');
+        ->middleware('permission:estoque.edit');
 
     // ── Categorias ────────────────────────────────
     Route::resource('categorias', CategoriaController::class)
@@ -164,6 +166,23 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::resource('agendas', AgendaController::class)
         ->only(['destroy'])
         ->middleware('permission:agenda.delete');
+
+    // ── Profissionais ─────────────────────────────
+    Route::resource('profissionais', ProfissionalController::class)
+        ->only(['index', 'show'])
+        ->middleware('permission:cadastros.profissionais.view');
+
+    Route::resource('profissionais', ProfissionalController::class)
+        ->only(['store'])
+        ->middleware('permission:cadastros.profissionais.create');
+
+    Route::resource('profissionais', ProfissionalController::class)
+        ->only(['update'])
+        ->middleware('permission:cadastros.profissionais.edit');
+
+    Route::resource('profissionais', ProfissionalController::class)
+        ->only(['destroy'])
+        ->middleware('permission:cadastros.profissionais.delete');
 
     // ── Forma de Pagamento ────────────────────────
     Route::resource('forma-pagamento', FormaPagamentoController::class)
@@ -247,6 +266,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put("/usuarios/{id}", [AuthController::class, 'atualizarUsuario'])->middleware('permission:cadastros.usuarios.edit');
     Route::delete("/usuarios/{id}", [AuthController::class, 'deletarUsuario'])->middleware('permission:cadastros.usuarios.delete');
     
+    // ── Empresa (dados do tenant logado) ──────────
+    Route::get('/empresa', [EmpresaController::class, 'show'])->middleware('permission:configuracoes.empresa.edit');
+    Route::put('/empresa', [EmpresaController::class, 'update'])->middleware('permission:configuracoes.empresa.edit');
+
     Route::post('/logout', [AuthController::class, 'logout']);
 
     Route::get('/me', [AuthController::class, 'me']);
@@ -259,3 +282,4 @@ Route::middleware('auth:sanctum')->group(function () {
 
 // Rotas públicas
 Route::post('/login', [AuthController::class, 'login']);
+Route::post('/registrar', [AuthController::class, 'registrarEmpresa']);

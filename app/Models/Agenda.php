@@ -13,10 +13,16 @@ class Agenda extends Model
     protected $fillable = [
         'cliente_id',
         'usuario_id',
+        'profissional_id',
+        'venda_id',
         'data_agendamento',
         'hora_agendamento',
+        'hora_fim',
+        'duracao_minutos',
         'observacao',
         'status',
+        'forma_pagamento',
+        'observacao_final',
         'empresa_id',
     ];
 
@@ -40,8 +46,18 @@ class Agenda extends Model
         return $this->belongsTo(User::class);
     }
 
+    public function profissional()
+    {
+        return $this->belongsTo(Profissional::class);
+    }
+
     public function itens()
     {
         return $this->hasMany(AgendaItem::class);
+    }
+
+    public function venda()
+    {
+        return $this->belongsTo(Venda::class);
     }
 }

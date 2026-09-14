@@ -14,6 +14,14 @@ class Servico extends Model
         'servico',
         'valor',
         'categoria',
+        'duracao_minutos',
+        'preco_base_operacional',
+        'valor_venda',
+        'gera_agendamento',
         'empresa_id'
+    ];
+
+    protected $casts = [
+        'gera_agendamento' => 'boolean',
     ];
 }

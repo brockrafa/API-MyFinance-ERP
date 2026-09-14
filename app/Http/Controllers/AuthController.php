@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Empresa;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Spatie\Permission\PermissionRegistrar;
 use Spatie\Permission\Models\Role;
@@ -21,12 +22,60 @@ class AuthController extends Controller
     }
 
     // Cadastro de uma nova empresa + primeiro usuário (admin)
-    // Este fluxo agora é controlado exclusivamente via comando artisan, não mais pela API.
     public function registrarEmpresa(Request $request)
     {
+        $validado = $request->validate([
+            'nome' => 'required|string|max:255',
+            'cnpj' => 'required|string|unique:empresas,cnpj',
+            'contrato' => 'required|string',
+            'user_name' => 'nullable|string|max:255',
+            'email' => 'nullable|email|unique:users,email',
+            'password' => 'required|string|min:8',
+        ]);
+
+        $userName = $validado['user_name'] ?? 'admin';
+        $email = $validado['email'] ?? 'admin@' . $this->normalizeEmailDomain($validado['nome']) . '.com';
+
+        if (empty($validado['email']) && User::where('email', $email)->exists()) {
+            return response()->json([
+                'message' => "Já existe um usuário cadastrado com o e-mail {$email}.",
+            ], 422);
+        }
+
+        $user = DB::transaction(function () use ($validado, $userName, $email) {
+            $empresa = Empresa::create([
+                'nome' => $validado['nome'],
+                'cnpj' => $validado['cnpj'],
+                'contrato_ref' => $validado['contrato'],
+                'ativo' => true,
+            ]);
+
+            $user = User::create([
+                'empresa_id' => $empresa->id,
+                'name' => $userName,
+                'email' => $email,
+                'password' => Hash::make($validado['password']),
+                'ativo' => true,
+            ]);
+
+            app(PermissionRegistrar::class)->setPermissionsTeamId($empresa->id);
+            $user->assignRole('admin');
+
+            return $user;
+        });
+
         return response()->json([
-            'message' => 'A criação de empresas foi desativada para a API. Use o comando artisan empresa:create com a referência do contrato.',
-        ], 403);
+            'message' => 'Empresa e usuário administrador criados com sucesso.',
+            'empresa' => $user->empresa,
+            'user' => $user,
+        ], 201);
+    }
+
+    private function normalizeEmailDomain(string $nome): string
+    {
+        $normalizado = mb_strtolower(trim($nome));
+
+        return preg_replace('/[^a-z0-9]+/', '', $normalizado) ?? $normalizado;
     }
 
     // Login
@@ -50,6 +99,7 @@ class AuthController extends Controller
 
         return response()->json(['token' => $token,
         'user' => $user,
+        'empresa' => $user->empresa,
         'expires_at' => now()->addMinutes(config('sanctum.expiration', 60))->timestamp * 1000,
         'roles' => $user->getRoleNames(),
         'permissions' => $user->getAllPermissions()->pluck('name'),]);
@@ -85,6 +135,7 @@ class AuthController extends Controller
             'token' => $novoToken,
             'expires_at' => now()->addMinutes(config('sanctum.expiration', 60))->timestamp * 1000,
             'user' => $user,
+            'empresa' => $user->empresa,
             'roles' => $user->getRoleNames(),
             'permissions' => $user->getAllPermissions()->pluck('name'),
         ]);
@@ -98,6 +149,7 @@ class AuthController extends Controller
 
         return response()->json([
             'user' => $user,
+            'empresa' => $user->empresa,
             'roles' => $user->getRoleNames(),
             'permissions' => $user->getAllPermissions()->pluck('name'),
         ]);
@@ -133,13 +185,18 @@ class AuthController extends Controller
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($empresaId);
 
-        // Atribui uma role base para todos os usuários. Se nenhuma role vier, usa 'usuario'.
-        $roleParaAtribuir = !empty($validado['role']) ? $validado['role'] : 'usuario';
-        $user->assignRole($roleParaAtribuir);
+        // Atribui uma role base apenas se fornecida
+        if (!empty($validado['role'])) {
+            $user->assignRole($validado['role']);
+        }
 
-        // Sincronizar permissões customizadas diretas (mesmo se vier vazio, é seguro)
+        // Sincronizar permissões customizadas diretas
+        // Se veio o array de permissões, sincronizar; caso contrário deixar vazio
         if (isset($validado['permissions'])) {
-            $user->syncPermissions($validado['permissions']); // O Spatie já aceita o array de nomes direto
+            $user->syncPermissions($validado['permissions']);
+        } else {
+            // Se não veio permissões e não tem role, deixar sem permissões
+            $user->syncPermissions([]);
         }
 
         return response()->json([
@@ -164,8 +221,8 @@ class AuthController extends Controller
             'email' => 'sometimes|required|email|unique:users,email,' . $user->id,
             'role' => 'nullable|string|exists:roles,name', // Permite trocar para nulo/vazio
             'ativo' => 'sometimes|boolean',
-            //'permissions' => 'sometimes|array',
-            //'permissions.*' => 'string|exists:permissions,name',
+            'permissions' => 'sometimes|array',
+            'permissions.*' => 'string|exists:permissions,name',
         ]);
 
         if (isset($validado['name'])) {
@@ -187,14 +244,18 @@ class AuthController extends Controller
             
             // Se a chave 'role' veio na requisição...
             if (array_key_exists('role', $validado)) {
-                $roleParaAtribuir = !empty($validado['role']) ? $validado['role'] : 'usuario';
+                // Se role foi fornecida e não está vazia, atribuir
+                if (!empty($validado['role'])) {
+                    // Previne que alguém escale para admin sem ser admin
+                    if($validado['role'] === 'admin' && !$request->user()->hasRole('admin')) {
+                        return response()->json(['message' => 'Apenas admins podem promover alguém a admin.'], 403);
+                    }
 
-                // Previne que alguém escale para admin sem ser admin
-                if($roleParaAtribuir === 'admin' && !$request->user()->hasRole('admin')) {
-                    return response()->json(['message' => 'Apenas admins podem promover alguém a admin.'], 403);
+                    $user->syncRoles([$validado['role']]);
+                } else {
+                    // Se role veio vazia, remover todas as roles
+                    $user->syncRoles([]);
                 }
-
-                $user->syncRoles([$roleParaAtribuir]);
             }
 
             // Sincronizar permissões customizadas (seja adicionando ou limpando o array)

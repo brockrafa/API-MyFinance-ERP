@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Models\Categoria;
 use App\Models\Produto;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
@@ -26,10 +27,9 @@ class ProdutoFactory extends Factory
                 'Smartphone',
                 'Tablet',
             ]) . ' ' . $this->faker->randomNumber(2),
-            'estoque' => $this->faker->numberBetween(5, 100),
             'valor' => $valor,
             'valor_venda' => round($valor * 1.35, 2),
-            'categoria' => $this->faker->numberBetween(1, 10),
+            'categoria_id' => Categoria::factory(),
         ];
     }
 }

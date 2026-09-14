@@ -224,6 +224,47 @@ class EstoqueService
         });
     }
 
+    public function estornarMovimento(MovimentoEstoque $movimento): void
+    {
+        if ($movimento->estaEstornado()) {
+            throw ValidationException::withMessages([
+                'movimento' => 'Esta movimentação já foi estornada.',
+            ]);
+        }
+
+        DB::transaction(function () use ($movimento): void {
+            $estoque = Estoque::findOrFail($movimento->estoque_id);
+            $produto = Produto::findOrFail($movimento->produto_id);
+
+            $saldo = $this->obterSaldoComLock($estoque, $produto);
+            $quantidadeEstorno = -$movimento->quantidade;
+
+            if ($saldo->quantidade + $quantidadeEstorno < 0) {
+                throw ValidationException::withMessages([
+                    'movimento' => "Não é possível estornar: saldo insuficiente do produto {$produto->produto} para reverter esta movimentação.",
+                ]);
+            }
+
+            $saldo->increment('quantidade', $quantidadeEstorno);
+
+            $this->registrarMovimento(
+                estoque: $estoque,
+                produto: $produto,
+                tipo: 'estorno',
+                quantidade: $quantidadeEstorno,
+                custoUnitario: (float) $movimento->custo_unitario,
+                origemTipo: MovimentoEstoque::class,
+                origemId: $movimento->id,
+                observacao: "Estorno da movimentação #{$movimento->id}",
+            );
+
+            $movimento->update([
+                'estornado_em' => now(),
+                'estornado_por_id' => Auth::id(),
+            ]);
+        });
+    }
+
     private function obterSaldoComLock(Estoque $estoque, Produto $produto): EstoqueSaldo
     {
         $saldo = EstoqueSaldo::query()

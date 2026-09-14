@@ -19,16 +19,16 @@ class ProdutoController extends Controller
         'produto' => 'required|min:4',
         'valor' => 'required|numeric',
         'valor_venda' => 'required|numeric',
-        'categoria' => 'required|integer'
+        'categoria_id' => 'required|integer|exists:categorias,id'
     ];
 
     public function index()
     {
-        return response()->json(Produto::all(), Response::HTTP_OK);
+        return response()->json(Produto::with('categoria')->get(), Response::HTTP_OK);
     }
 
     public function store(Request $request)
-    {   
+    {
         $data = $request->validate(array_merge($this->validacaoPadrao, [
             'estoque_id' => ['nullable', 'integer', 'exists:estoques,id'],
             'quantidade_inicial' => ['nullable', 'integer', 'min:0'],
@@ -39,7 +39,7 @@ class ProdutoController extends Controller
                 'produto' => $data['produto'],
                 'valor' => $data['valor'],
                 'valor_venda' => $data['valor_venda'],
-                'categoria' => $data['categoria'],
+                'categoria_id' => $data['categoria_id'],
             ]);
 
             $quantidade = (int) ($data['quantidade_inicial'] ?? 0);
@@ -67,13 +67,13 @@ class ProdutoController extends Controller
 
     public function show(string $id)
     {
-        $produto = Produto::find($id);
+        $produto = Produto::with('categoria')->find($id);
 
         if (!$produto) {
             return response()->json([
                 'message' => 'Produto não encontrado',
                 'errors' => ['id' => 'Produto com ID:'. $id. ' não existe.']
-            ], Response::HTTP_NOT_FOUND); 
+            ], Response::HTTP_NOT_FOUND);
         }
 
         return response()->json($produto, Response::HTTP_OK);  // Retorna o produto com status 200
@@ -93,7 +93,7 @@ class ProdutoController extends Controller
             'produto',
             'valor',
             'valor_venda',
-            'categoria',
+            'categoria_id',
         ]));
         return response()->noContent();
     }

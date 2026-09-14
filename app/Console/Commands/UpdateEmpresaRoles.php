@@ -17,62 +17,77 @@ class UpdateEmpresaRoles extends Command
      *
      * php artisan empresa:update-roles 5 --role=vendedor
      *   → Atualiza só a role 'vendedor' da empresa 5
+     *
+     * php artisan empresa:update-roles --all
+     *   → Atualiza todas as roles padrão de todas as empresas cadastradas
+     *
+     * php artisan empresa:update-roles --all --role=vendedor
+     *   → Atualiza só a role 'vendedor' de todas as empresas cadastradas
      */
-    protected $signature = 'empresa:update-roles 
-                            {empresa_id : ID da empresa a ser atualizada}
+    protected $signature = 'empresa:update-roles
+                            {empresa_id? : ID da empresa a ser atualizada}
+                            {--all : Atualizar todas as empresas cadastradas}
                             {--role= : Atualizar apenas uma role específica (padrão: todas)}';
 
     protected $description = 'Atualiza (cria/sincroniza) as roles e permissões padrão de uma empresa já existente';
 
     public function handle(): int
     {
-        $empresa = Empresa::find($this->argument('empresa_id'));
+        if (!$this->option('all') && !$this->argument('empresa_id')) {
+            $this->error('Informe o ID da empresa ou use --all para atualizar todas.');
+            return self::FAILURE;
+        }
 
-        if (!$empresa) {
+        $empresas = $this->option('all')
+            ? Empresa::all()
+            : Empresa::where('id', $this->argument('empresa_id'))->get();
+
+        if ($empresas->isEmpty()) {
             $this->error("Empresa #{$this->argument('empresa_id')} não encontrada.");
             return self::FAILURE;
         }
 
         $roleFiltro = $this->option('role');
-        $definicoes = RolePermissionDefinitions::all();
+        $definicoesBase = RolePermissionDefinitions::all();
 
-        if ($roleFiltro) {
-            if (!isset($definicoes[$roleFiltro])) {
-                $this->error("Role '{$roleFiltro}' não existe nas definições padrão.");
-                return self::FAILURE;
+        if ($roleFiltro && !isset($definicoesBase[$roleFiltro])) {
+            $this->error("Role '{$roleFiltro}' não existe nas definições padrão.");
+            return self::FAILURE;
+        }
+
+        foreach ($empresas as $empresa) {
+            $definicoes = $roleFiltro ? [$roleFiltro => $definicoesBase[$roleFiltro]] : $definicoesBase;
+
+            $this->info("Atualizando empresa #{$empresa->id} ({$empresa->nome})...");
+
+            app(PermissionRegistrar::class)->setPermissionsTeamId($empresa->id);
+
+            foreach (RolePermissionDefinitions::allPermissionNames() as $permissionName) {
+                Permission::firstOrCreate([
+                    'name' => $permissionName,
+                    'guard_name' => 'sanctum',
+                ]);
             }
-            $definicoes = [$roleFiltro => $definicoes[$roleFiltro]];
-        }
 
-        $this->info("Atualizando empresa #{$empresa->id} ({$empresa->nome})...");
+            foreach ($definicoes as $roleName => $permissoes) {
+                $role = Role::firstOrCreate(
+                    ['name' => $roleName, 'guard_name' => 'sanctum', 'empresa_id' => $empresa->id]
+                );
 
-        app(PermissionRegistrar::class)->setPermissionsTeamId($empresa->id);
+                $foiCriada = $role->wasRecentlyCreated;
 
-        foreach (RolePermissionDefinitions::allPermissionNames() as $permissionName) {
-            Permission::firstOrCreate([
-                'name' => $permissionName,
-                'guard_name' => 'sanctum',
-            ]);
-        }
+                $permissoesResolvidas = RolePermissionDefinitions::resolvePermissions($permissoes);
 
-        foreach ($definicoes as $roleName => $permissoes) {
-            $role = Role::firstOrCreate(
-                ['name' => $roleName, 'guard_name' => 'sanctum', 'empresa_id' => $empresa->id]
-            );
+                $role->syncPermissions($permissoesResolvidas);
 
-            $foiCriada = $role->wasRecentlyCreated;
-
-            $permissoesResolvidas = RolePermissionDefinitions::resolvePermissions($permissoes);
-
-            $role->syncPermissions($permissoesResolvidas);
-
-            $status = $foiCriada ? 'criada' : 'atualizada';
-            $this->line("  ✓ Role '{$roleName}' {$status} -> " . count($permissoesResolvidas) . ' permissões');
+                $status = $foiCriada ? 'criada' : 'atualizada';
+                $this->line("  ✓ Role '{$roleName}' {$status} -> " . count($permissoesResolvidas) . ' permissões');
+            }
         }
 
         app(PermissionRegistrar::class)->forgetCachedPermissions();
 
-        $this->info('Empresa atualizada com sucesso.');
+        $this->info('Empresa(s) atualizada(s) com sucesso.');
         return self::SUCCESS;
     }
 }

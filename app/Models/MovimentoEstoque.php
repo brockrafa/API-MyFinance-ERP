@@ -26,6 +26,8 @@ class MovimentoEstoque extends Model
         'usuario_id',
         'observacao',
         'movimentado_em',
+        'estornado_em',
+        'estornado_por_id',
     ];
 
     protected $casts = [
@@ -33,6 +35,7 @@ class MovimentoEstoque extends Model
         'custo_unitario' => 'decimal:4',
         'custo_total' => 'decimal:4',
         'movimentado_em' => 'datetime',
+        'estornado_em' => 'datetime',
     ];
 
     public function estoque(): BelongsTo
@@ -48,5 +51,15 @@ class MovimentoEstoque extends Model
     public function usuario(): BelongsTo
     {
         return $this->belongsTo(User::class, 'usuario_id');
+    }
+
+    public function estornadoPor(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'estornado_por_id');
+    }
+
+    public function estaEstornado(): bool
+    {
+        return $this->estornado_em !== null;
     }
 }

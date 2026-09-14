@@ -39,10 +39,20 @@ class RolePermissionDefinitions
                 'cadastros.categorias.edit',
                 'cadastros.categorias.delete',
 
+                'estoque.view',
+                'estoque.create',
+                'estoque.edit',
+                'estoque.delete',
+
                 'agenda.view',
                 'agenda.create',
                 'agenda.edit',
                 'agenda.delete',
+
+                'cadastros.profissionais.view',
+                'cadastros.profissionais.create',
+                'cadastros.profissionais.edit',
+                'cadastros.profissionais.delete',
 
                 'vendas.view',
                 'vendas.create',
@@ -69,16 +79,20 @@ class RolePermissionDefinitions
                 'cadastros.usuarios.create',
                 'cadastros.usuarios.edit',
                 'cadastros.usuarios.delete',
+
+                'configuracoes.empresa.edit',
             ],
             'usuario' => [
                 'cadastros.clientes.view',
                 'cadastros.produtos.view',
                 'cadastros.categorias.view',
                 'cadastros.formas-pagamento.view',
+                'estoque.view',
                 'agenda.view',
                 'agenda.create',
                 'agenda.edit',
                 'agenda.delete',
+                'cadastros.profissionais.view',
             ],
             'vendedor' => [
                 'cadastros.clientes.view',
@@ -97,7 +111,13 @@ class RolePermissionDefinitions
                 'cadastros.categorias.edit',
 
                 'cadastros.formas-pagamento.view',
-                
+
+                'estoque.view',
+
+                'agenda.view',
+                'agenda.create',
+                'cadastros.profissionais.view',
+
                 'vendas.view',
                 'vendas.create',
                 'vendas.edit',

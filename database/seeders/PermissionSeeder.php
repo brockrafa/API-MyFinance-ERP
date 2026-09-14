@@ -35,6 +35,12 @@ class PermissionSeeder extends Seeder
             'cadastros.categorias.edit',
             'cadastros.categorias.delete',
 
+            // Estoque
+            'estoque.view',
+            'estoque.create',
+            'estoque.edit',
+            'estoque.delete',
+
             // Cadastros - Serviços
             'cadastros.servicos.view',
             'cadastros.servicos.create',

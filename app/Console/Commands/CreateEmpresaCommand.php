@@ -51,6 +51,7 @@ class CreateEmpresaCommand extends Command
             'nome' => $nome,
             'cnpj' => $cnpj,
             'contrato_ref' => $contrato,
+            'ativo' => true,
         ]);
 
         $user = User::create([

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Agenda;
 use App\Models\Venda;
 use App\Models\Cliente;
 use App\Models\Produto;
@@ -11,6 +12,7 @@ use App\Models\LancamentoFinanceiro;
 use App\Models\Estoque;
 use App\Models\EstoqueSaldo;
 use App\Services\EstoqueService;
+use App\Services\VendaService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
@@ -18,6 +20,10 @@ use Carbon\Carbon;
 
 class VendaController extends Controller
 {
+    public function __construct(private VendaService $vendaService)
+    {
+    }
+
     public function index()
     {
         $vendas = Venda::with([
@@ -25,7 +31,7 @@ class VendaController extends Controller
             'formaPagamento:id,descricao',
             'produtos',
             'lancamentos:id,venda_id,valor,valor_pago,status',
-        ])->select('id', 'cliente_id', 'data_venda', 'total', 'forma_pagamento_id', 'tipo_venda')
+        ])->select('id', 'cliente_id', 'agenda_id', 'data_venda', 'total', 'forma_pagamento_id', 'tipo_venda')
           ->get();
 
         $vendas->each(function ($venda) {
@@ -50,13 +56,16 @@ class VendaController extends Controller
             ]);
             $this->validarCliente($request->cliente_id);
 
-            $venda = $this->criarVenda($request);
-            $this->salvarItens($request->produtos, $venda);
-            app(EstoqueService::class)->baixarVenda($venda, Estoque::findOrFail($request->estoque_id));
-            $this->aplicarCondicaoPagamento($request, $venda);
-            $venda->save();
+            $dadosVenda = [
+                'cliente_id' => $request->cliente_id,
+                'estoque_id' => $request->estoque_id,
+                'forma_pagamento_id' => $request->forma_pagamento['id'],
+                'data_venda' => $request->filled('data_venda') ? $request->data_venda : now()->toDateString(),
+                'tipo_venda' => $request->condicao_pagamento['tipo'],
+                'condicao_pagamento' => $request->condicao_pagamento,
+            ];
 
-            $this->gerarLancamentos($venda);
+            $venda = $this->vendaService->criar($dadosVenda, $request->produtos, $request->user()->empresa_id);
 
             DB::commit();
             return response()->json($venda, Response::HTTP_CREATED);
@@ -144,7 +153,16 @@ class VendaController extends Controller
             ], Response::HTTP_NOT_FOUND);
         }
 
-        $venda->delete();
+        DB::transaction(function () use ($venda) {
+            $agenda = $venda->agenda_id ? Agenda::find($venda->agenda_id) : null;
+
+            $venda->delete();
+
+            if ($agenda) {
+                $agenda->update(['venda_id' => null, 'status' => 'agendado']);
+            }
+        });
+
         return response()->json(null, Response::HTTP_NO_CONTENT);
     }
 

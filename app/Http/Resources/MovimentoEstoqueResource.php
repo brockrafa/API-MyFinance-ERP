@@ -20,6 +20,7 @@ class MovimentoEstoqueResource extends JsonResource
             'venda' => 'Venda',
             'transferencia_saida' => 'Transferência (Saída)',
             'transferencia_entrada' => 'Transferência (Entrada)',
+            'estorno' => 'Estorno',
         ];
 
         $tipoCores = [
@@ -28,6 +29,7 @@ class MovimentoEstoqueResource extends JsonResource
             'venda' => 'warning',
             'transferencia_saida' => 'info',
             'transferencia_entrada' => 'info',
+            'estorno' => 'secondary',
         ];
 
         return [
@@ -64,6 +66,8 @@ class MovimentoEstoqueResource extends JsonResource
             'observacao' => $this->observacao,
             'movimentado_em' => $this->movimentado_em?->format('Y-m-d H:i:s'),
             'movimentado_em_breve' => $this->movimentado_em?->diffForHumans(),
+            'estornado_em' => $this->estornado_em?->format('Y-m-d H:i:s'),
+            'esta_estornado' => $this->estornado_em !== null,
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];
