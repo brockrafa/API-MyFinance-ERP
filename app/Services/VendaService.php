@@ -157,10 +157,10 @@ class VendaService
 
         $servicosGeramAgendamento = Servico::whereIn('id', $servicoIds)
             ->where('gera_agendamento', true)
-            ->pluck('id');
+            ->get();
 
-        foreach ($servicosGeramAgendamento as $servicoId) {
-            Agenda::create([
+        foreach ($servicosGeramAgendamento as $servico) {
+            $agenda = Agenda::create([
                 'cliente_id' => $venda->cliente_id,
                 'venda_id' => $venda->id,
                 'data_agendamento' => null,
@@ -169,6 +169,42 @@ class VendaService
                 'observacao' => 'Gerado automaticamente pela venda #' . $venda->id . ' — pendente de horário e profissional.',
                 'empresa_id' => $empresaId,
             ]);
+
+            // Adicionar os itens de venda (produtos e serviços) ao agendamento
+            foreach ($venda->itens as $itemVenda) {
+                if ($itemVenda->tipo === 'servico' && $itemVenda->servico_id === $servico->id) {
+                    \App\Models\AgendaItem::create([
+                        'agenda_id' => $agenda->id,
+                        'tipo' => 'servico',
+                        'servico_id' => $itemVenda->servico_id,
+                        'descricao' => $itemVenda->servico->servico ?? null,
+                        'quantidade' => $itemVenda->quantidade,
+                        'valor_unitario' => $itemVenda->valor_unitario,
+                        'empresa_id' => $empresaId,
+                    ]);
+                } elseif ($itemVenda->tipo === 'produto') {
+                    // Incluir produtos também se estiverem na venda
+                    \App\Models\AgendaItem::create([
+                        'agenda_id' => $agenda->id,
+                        'tipo' => 'produto',
+                        'produto_id' => $itemVenda->produto_id,
+                        'descricao' => $itemVenda->produto->produto ?? null,
+                        'quantidade' => $itemVenda->quantidade,
+                        'valor_unitario' => $itemVenda->valor_unitario,
+                        'empresa_id' => $empresaId,
+                    ]);
+                } elseif ($itemVenda->tipo === 'avulso') {
+                    // Incluir itens avulsos também
+                    \App\Models\AgendaItem::create([
+                        'agenda_id' => $agenda->id,
+                        'tipo' => 'avulso',
+                        'descricao' => $itemVenda->descricao ?? 'Item avulso',
+                        'quantidade' => $itemVenda->quantidade,
+                        'valor_unitario' => $itemVenda->valor_unitario,
+                        'empresa_id' => $empresaId,
+                    ]);
+                }
+            }
         }
     }
 }
