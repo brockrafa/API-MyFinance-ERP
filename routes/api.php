@@ -234,6 +234,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/lancamentos-financeiros/lancar-recorrentes-pagar', [LancamentoFinanceiroPagarController::class, 'lancarRecorrentes'])
         ->middleware('permission:financeiro.contas-pagar.create');
 
+    Route::post('/contas-pagar', [LancamentoFinanceiroPagarController::class, 'store'])
+        ->middleware('permission:financeiro.contas-pagar.create');
+
     Route::put('/contas-pagar/{id}', [LancamentoFinanceiroPagarController::class, 'update'])
         ->middleware('permission:financeiro.contas-pagar.edit');
 

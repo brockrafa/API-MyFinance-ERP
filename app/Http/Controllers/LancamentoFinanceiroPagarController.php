@@ -28,6 +28,54 @@ class LancamentoFinanceiroPagarController extends Controller
         return response()->json($lancamentos);
     }
 
+    /**
+     * Cadastra uma nova conta a pagar avulsa.
+     * Se 'parcelas' > 1, cria uma conta para cada mês a partir do vencimento.
+     * Se 'ja_pago' vier true, cria a(s) conta(s) já com status pago e forma_pagamento.
+     */
+    public function store(Request $request)
+    {
+        $data = $request->validate([
+            'descricao'       => 'required|string|max:255',
+            'fornecedor'      => 'nullable|string|max:255',
+            'categoria_id'    => 'nullable|exists:categorias,id',
+            'valor'           => 'required|numeric|min:0.01',
+            'data_vencimento' => 'required|date_format:Y-m-d',
+            'parcelas'        => 'nullable|integer|min:1',
+            'observacao'      => 'nullable|string',
+            'ja_pago'         => 'nullable|boolean',
+            'data_pagamento'  => 'required_if:ja_pago,true|nullable|date_format:Y-m-d',
+            'forma_pagamento' => 'required_if:ja_pago,true|nullable|in:pix,dinheiro,transferencia,boleto,cartao_debito,cartao_credito',
+        ]);
+
+        $jaPago  = (bool) ($data['ja_pago'] ?? false);
+        $parcelas = (int) ($data['parcelas'] ?? 1);
+        $base    = Carbon::parse($data['data_vencimento']);
+
+        $criadas = [];
+
+        DB::transaction(function () use ($data, $jaPago, $parcelas, $base, &$criadas) {
+            for ($i = 0; $i < $parcelas; $i++) {
+                $criadas[] = LancamentoFinanceiro::create([
+                    'tipo'            => 'saida',
+                    'descricao'       => $data['descricao'],
+                    'fornecedor'      => $data['fornecedor'] ?? null,
+                    'categoria_id'    => $data['categoria_id'] ?? null,
+                    'valor'           => $data['valor'],
+                    'data_vencimento' => $base->copy()->addMonths($i)->format('Y-m-d'),
+                    'numero_parcela'  => $i + 1,
+                    'total_parcelas'  => $parcelas,
+                    'observacao'      => $data['observacao'] ?? null,
+                    'status'          => $jaPago ? 'pago' : 'pendente',
+                    'data_pagamento'  => $jaPago ? $data['data_pagamento'] : null,
+                    'forma_pagamento' => $jaPago ? $data['forma_pagamento'] : null,
+                ]);
+            }
+        });
+
+        return response()->json(['message' => 'Conta(s) cadastrada(s) com sucesso.', 'contas' => $criadas], Response::HTTP_CREATED);
+    }
+
     public function lancarRecorrentes(Request $request)
     {   
         $request->validate([

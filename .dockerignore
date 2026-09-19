@@ -1,0 +1,15 @@
+vendor
+node_modules
+.env
+.env.testing
+storage/logs
+storage/framework/cache
+storage/framework/sessions
+storage/framework/views
+.git
+.gitignore
+.gitattributes
+.editorconfig
+README.md
+tests
+.phpunit.result.cache

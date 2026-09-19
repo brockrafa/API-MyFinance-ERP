@@ -27,18 +27,43 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::table('agendas', function (Blueprint $table) {
-            $table->dropForeign(['usuario_id']);
-        });
+        if ($this->foreignKeyExists('agendas', 'agendas_usuario_id_foreign')) {
+            Schema::table('agendas', function (Blueprint $table) {
+                $table->dropForeign(['usuario_id']);
+            });
+        }
+
+        DB::table('agendas')->whereNull('usuario_id')->delete();
 
         DB::statement('ALTER TABLE agendas MODIFY usuario_id BIGINT UNSIGNED NOT NULL');
 
-        Schema::table('agendas', function (Blueprint $table) {
-            $table->foreign('usuario_id')->references('id')->on('users')->cascadeOnDelete();
-        });
+        if (!$this->foreignKeyExists('agendas', 'agendas_usuario_id_foreign')) {
+            Schema::table('agendas', function (Blueprint $table) {
+                $table->foreign('usuario_id')->references('id')->on('users')->cascadeOnDelete();
+            });
+        }
 
-        Schema::table('agendas', function (Blueprint $table) {
-            $table->dropConstrainedForeignId('profissional_id');
-        });
+        if (Schema::hasColumn('agendas', 'profissional_id')) {
+            if ($this->foreignKeyExists('agendas', 'agendas_profissional_id_foreign')) {
+                Schema::table('agendas', function (Blueprint $table) {
+                    $table->dropForeign(['profissional_id']);
+                });
+            }
+
+            Schema::table('agendas', function (Blueprint $table) {
+                $table->dropColumn('profissional_id');
+            });
+        }
+    }
+
+    private function foreignKeyExists(string $table, string $constraintName): bool
+    {
+        $result = DB::selectOne(
+            'SELECT COUNT(*) AS total FROM information_schema.KEY_COLUMN_USAGE
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND CONSTRAINT_NAME = ?',
+            [$table, $constraintName]
+        );
+
+        return $result->total > 0;
     }
 };
