@@ -27,7 +27,7 @@ class Venda extends Model
     {
         return $this->belongsToMany(Produto::class, 'item_vendas')
             ->select('produtos.id', 'produtos.produto', 'produtos.valor', 'produtos.valor_venda')
-            ->withPivot('quantidade', 'valor_unitario','tipo');
+            ->withPivot('quantidade', 'valor_unitario', 'custo_unitario', 'tipo');
     }
 
     public function itens()

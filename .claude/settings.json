@@ -8,7 +8,25 @@
       "Bash(grep -oP \"CREATE TABLE \\\\`\\\\K[^\\\\`]+\" \"C:\\\\Users\\\\Rafael\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-Rafael-Desktop-ERP-API-MyFinance-ERP\\\\dd3c1961-5b75-4ede-8ccc-dfa1c0a69650\\\\scratchpad\\\\erp_prd.sql\")",
       "Bash(python extract_inserts.py)",
       "Bash(wc -l \"/c/Users/Rafael/AppData/Local/Temp/claude/c--Users-Rafael-Desktop-ERP-API-MyFinance-ERP/dd3c1961-5b75-4ede-8ccc-dfa1c0a69650/scratchpad/erp_prd_data_only.sql\")",
-      "Bash(php artisan tinker '--execute= *)"
+      "Bash(php artisan tinker '--execute= *)",
+      "Bash(mkdir -p \"/c/Users/Rafael/AppData/Local/Temp/claude/c--Users-Rafael-Desktop-ERP-API-MyFinance-ERP/7d517ca2-8e28-47f7-bc96-6eac8ba153d4/scratchpad/raposotour_powerbi\")",
+      "Bash(python gerar_dados.py)",
+      "Bash(mkdir -p \"/c/Users/Rafael/Desktop/ERP/API-MyFinance-ERP/dashboard_powerbi/planilhas\" && cp \"/c/Users/Rafael/AppData/Local/Temp/claude/c--Users-Rafael-Desktop-ERP-API-MyFinance-ERP/7d517ca2-8e28-47f7-bc96-6eac8ba153d4/scratchpad/raposotour_powerbi/\"*.xlsx \"/c/Users/Rafael/Desktop/ERP/API-MyFinance-ERP/dashboard_powerbi/planilhas/\" && ls \"/c/Users/Rafael/Desktop/ERP/API-MyFinance-ERP/dashboard_powerbi/planilhas/\")",
+      "Bash(python -c ' *)",
+      "Bash(python -c \"import locale, sys; print\\(locale.getpreferredencoding\\(\\)\\); print\\(sys.getdefaultencoding\\(\\)\\)\")",
+      "Read(//c/Users/Rafael/AppData/Local/Temp/claude/c--Users-Rafael-Desktop-ERP-API-MyFinance-ERP/7d517ca2-8e28-47f7-bc96-6eac8ba153d4/scratchpad/raposotour_powerbi/**)",
+      "Bash(PYTHONUTF8=1 python gerar_dados.py)",
+      "Bash(python -X utf8 gerar_dados.py)",
+      "Bash(python -X utf8 -c ' *)",
+      "Bash(PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python -X utf8 -c ' *)",
+      "Bash(cp \"/c/Users/Rafael/AppData/Local/Temp/claude/c--Users-Rafael-Desktop-ERP-API-MyFinance-ERP/7d517ca2-8e28-47f7-bc96-6eac8ba153d4/scratchpad/raposotour_powerbi/\"*.xlsx \"/c/Users/Rafael/Desktop/ERP/API-MyFinance-ERP/dashboard_powerbi/planilhas/\" && ls \"/c/Users/Rafael/Desktop/ERP/API-MyFinance-ERP/dashboard_powerbi/planilhas/\")",
+      "Bash(cp \"/c/Users/Rafael/AppData/Local/Temp/claude/c--Users-Rafael-Desktop-ERP-API-MyFinance-ERP/7d517ca2-8e28-47f7-bc96-6eac8ba153d4/scratchpad/raposotour_powerbi/\"*.xlsx \"/c/Users/Rafael/Desktop/ERP/API-MyFinance-ERP/dashboard_powerbi/planilhas/\" && ls -la \"/c/Users/Rafael/Desktop/ERP/API-MyFinance-ERP/dashboard_powerbi/planilhas/\")",
+      "Bash(rm -f \"/c/Users/Rafael/Desktop/ERP/API-MyFinance-ERP/dashboard_powerbi/planilhas/\"*.xlsx)",
+      "Bash(cp \"/c/Users/Rafael/AppData/Local/Temp/claude/c--Users-Rafael-Desktop-ERP-API-MyFinance-ERP/7d517ca2-8e28-47f7-bc96-6eac8ba153d4/scratchpad/raposotour_powerbi/raposotour_dashboard_dados.xlsx\" \"/c/Users/Rafael/Desktop/ERP/API-MyFinance-ERP/dashboard_powerbi/\")"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\Rafael\\AppData\\Local\\Temp\\claude\\c--Users-Rafael-Desktop-ERP-API-MyFinance-ERP\\7d517ca2-8e28-47f7-bc96-6eac8ba153d4\\scratchpad",
+      "C:\\Users\\Rafael\\AppData\\Local\\Temp\\claude\\c--Users-Rafael-Desktop-ERP-API-MyFinance-ERP\\7d517ca2-8e28-47f7-bc96-6eac8ba153d4\\scratchpad\\raposotour_powerbi"
     ]
   }
 }

@@ -213,7 +213,9 @@ class VendaController extends Controller
                     ->where('estoque_id', $venda->estoque_id)
                     ->where('produto_id', $model->id)
                     ->first();
-                $item->custo_unitario = (float) ($saldo?->custo_medio ?? 0);
+                // Produtos cadastrados antes do módulo de estoque não têm saldo/custo médio;
+                // nesse caso usa o preço de custo cadastrado no produto como fallback.
+                $item->custo_unitario = (float) ($saldo?->custo_medio ?: $model->valor ?? 0);
                 $item->produto_id = $produto['id'];
             }
 
