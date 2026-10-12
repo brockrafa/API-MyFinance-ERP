@@ -166,9 +166,13 @@ class AuthController extends Controller
             'ativo' => 'sometimes|boolean',
             'permissions' => 'sometimes|array',
             'permissions.*' => 'string|exists:permissions,name',
-        ]);
+        ], $this->mensagensUsuario());
 
         $empresaId = $request->user()->empresa_id;
+
+        if ($erro = $this->validarEscalonamento($request, $validado['permissions'] ?? [], $validado['role'] ?? null)) {
+            return $erro;
+        }
 
         // Verificar se o usuário logado é admin para criar outro admin
         if(!empty($validado['role']) && $validado['role'] === 'admin' && !$request->user()->hasRole('admin')) {
@@ -223,7 +227,11 @@ class AuthController extends Controller
             'ativo' => 'sometimes|boolean',
             'permissions' => 'sometimes|array',
             'permissions.*' => 'string|exists:permissions,name',
-        ]);
+        ], $this->mensagensUsuario());
+
+        if (!$editandoSiMesmo && ($erro = $this->validarEscalonamento($request, $validado['permissions'] ?? []))) {
+            return $erro;
+        }
 
         if (isset($validado['name'])) {
             $user->name = $validado['name'];
@@ -285,8 +293,54 @@ class AuthController extends Controller
         return response()->json([
             'user' => $user,
             'roles' => $user->getRoleNames(),
-            'permissions' => $user->getDirectPermissions()->pluck('name'), // Melhor usar getDirectPermissions aqui para não misturar com as da Role no frontend
+            // Permissões efetivas (role + diretas): é o que o usuário realmente consegue acessar
+            'permissions' => $user->getAllPermissions()->pluck('name'),
         ]);
+    }
+
+    private function mensagensUsuario(): array
+    {
+        return [
+            'name.required' => 'Informe o nome do usuário.',
+            'name.max' => 'O nome deve ter no máximo :max caracteres.',
+            'email.required' => 'Informe o e-mail do usuário.',
+            'email.email' => 'Informe um e-mail válido.',
+            'email.unique' => 'Este e-mail já está cadastrado.',
+            'password.required' => 'Informe a senha.',
+            'password.min' => 'A senha deve ter no mínimo :min caracteres.',
+            'role.exists' => 'O perfil informado não existe.',
+            'permissions.array' => 'As permissões devem ser uma lista.',
+            'permissions.*.exists' => 'Uma das permissões informadas não existe.',
+        ];
+    }
+
+    // Impede que alguém conceda permissões que ele mesmo não possui (admin é irrestrito).
+    private function validarEscalonamento(Request $request, array $permissoes, ?string $role = null)
+    {
+        $logado = $request->user();
+
+        if ($logado->hasRole('admin')) {
+            return null;
+        }
+
+        app(PermissionRegistrar::class)->setPermissionsTeamId($logado->empresa_id);
+        $proprias = $logado->getAllPermissions()->pluck('name')->all();
+
+        if ($role) {
+            $doRole = Role::where('name', $role)->where('empresa_id', $logado->empresa_id)->first();
+            $permissoes = array_merge($permissoes, $doRole ? $doRole->permissions->pluck('name')->all() : []);
+        }
+
+        $indevidas = array_diff($permissoes, $proprias);
+
+        if ($indevidas) {
+            return response()->json([
+                'message' => 'Você não pode conceder permissões que não possui.',
+                'errors' => ['permissions' => ['Você não pode conceder permissões que não possui: ' . implode(', ', $indevidas)]],
+            ], 403);
+        }
+
+        return null;
     }
 
     public function logout(Request $request)

@@ -29,7 +29,7 @@ class ProdutoFactory extends Factory
             ]) . ' ' . $this->faker->randomNumber(2),
             'valor' => $valor,
             'valor_venda' => round($valor * 1.35, 2),
-            'categoria_id' => Categoria::factory(),
+            'categoria_id' => Categoria::inRandomOrder()->value('id') ?? Categoria::factory(),
         ];
     }
 }

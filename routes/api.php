@@ -20,8 +20,13 @@ use App\Http\Controllers\EstoqueController;
 use App\Http\Controllers\EntradaEstoqueController;
 use App\Http\Controllers\TransferenciaEstoqueController;
 use App\Http\Controllers\BaixaEstoqueController;
+use App\Http\Controllers\DashboardController;
 
 Route::middleware('auth:sanctum')->group(function () {
+
+    // ── Dashboard gerencial ───────────────────────
+    Route::get('/dashboard/financeiro', [DashboardController::class, 'financeiro'])
+        ->middleware('permission:financeiro.lancamentos.view|financeiro.contas-pagar.view|vendas.view');
 
     // ── Roles e Permissões ────────────────────────
     Route::get('/roles', [RoleController::class, 'index']);
