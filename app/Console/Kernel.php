@@ -12,7 +12,10 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule): void
     {
-        // $schedule->command('inspire')->hourly();
+        // Em Cloud Run estas tarefas são disparadas pelo Cloud Scheduler (ver CronController);
+        // o agendamento abaixo vale para execução local com `php artisan schedule:work`.
+        $schedule->command('lancamentos:atualizar-atrasos')->dailyAt('00:10');
+        $schedule->command('despesas:lancar-recorrentes')->monthlyOn(1, '00:20');
     }
 
     /**

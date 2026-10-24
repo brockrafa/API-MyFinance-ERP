@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\LancamentoFinanceiro;
 use App\Models\ItemVenda;
-use App\Models\DespesaRecorrente;
+use App\Services\DespesaRecorrenteService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
@@ -76,49 +76,13 @@ class LancamentoFinanceiroPagarController extends Controller
         return response()->json(['message' => 'Conta(s) cadastrada(s) com sucesso.', 'contas' => $criadas], Response::HTTP_CREATED);
     }
 
-    public function lancarRecorrentes(Request $request)
-    {   
+    public function lancarRecorrentes(Request $request, DespesaRecorrenteService $service)
+    {
         $request->validate([
             'mes' => 'required|date_format:Y-m',
-            ]);
-            
-        
-        $mes = $request->mes;
-        [$ano, $numMes] = explode('-', $mes);
+        ]);
 
-        // IDs de recorrentes já lançadas neste mês
-        $jaLancados = LancamentoFinanceiro::where('tipo', '=', 'saida')
-            ->whereRaw("DATE_FORMAT(data_vencimento, '%Y-%m') = ?", [$mes])
-            ->pluck('conta_pagar_id')
-            ->toArray();
-
-        $recorrentes = DespesaRecorrente::where('ativa', true)
-            ->whereNotIn('id', $jaLancados)
-            ->get();
-
-        $lancadas = 0;
-        
-        DB::transaction(function () use ($recorrentes, $ano, $numMes, &$lancadas) {
-            
-            foreach ($recorrentes as $rec) {
-                // Calcula o dia de vencimento respeitando o último dia do mês
-                $dia   = min((int) $rec->dia_vencimento, Carbon::create($ano, $numMes, 1)->daysInMonth);
-                $venc  = Carbon::create($ano, $numMes, $dia)->format('Y-m-d');
-                LancamentoFinanceiro::create([
-                    'tipo'           => 'saida',
-                    'descricao'      => $rec->descricao,
-                    'fornecedor'     => $rec->fornecedor,
-                    'numero_parcela' => 1,
-                    'total_parcelas' => 1,
-                    'valor'          => $rec->valor,
-                    'data_vencimento' => $venc,
-                    'status'         => 'pendente',
-                    'conta_pagar_id' => $rec->id,
-                    'categoria_id' => $rec->categoria_id
-                ]);
-                $lancadas++;
-            }
-        });
+        $lancadas = $service->lancarMes($request->mes, $request->user()->empresa_id);
 
         return response()->json(['lancadas' => $lancadas], Response::HTTP_OK);
     }

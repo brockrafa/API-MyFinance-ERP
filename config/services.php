@@ -21,6 +21,11 @@ return [
         'scheme' => 'https',
     ],
 
+    'cron' => [
+        // Token do gatilho de tarefas agendadas (Cloud Scheduler -> /api/internal/cron/{tarefa})
+        'token' => env('CRON_TOKEN'),
+    ],
+
     'postmark' => [
         'token' => env('POSTMARK_TOKEN'),
     ],

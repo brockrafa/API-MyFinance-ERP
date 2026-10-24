@@ -3,14 +3,15 @@
 namespace App\Services;
 
 use App\Models\Agenda;
+use App\Models\AgendaItem;
 use App\Models\Estoque;
-use App\Models\EstoqueSaldo;
 use App\Models\ItemVenda;
 use App\Models\LancamentoFinanceiro;
 use App\Models\Produto;
 use App\Models\Servico;
 use App\Models\Venda;
 use Carbon\Carbon;
+use Illuminate\Validation\ValidationException;
 
 class VendaService
 {
@@ -29,9 +30,11 @@ class VendaService
         $venda->data_venda = $dadosVenda['data_venda'] ?? now()->toDateString();
         $venda->tipo_venda = $dadosVenda['tipo_venda'];
         $venda->empresa_id = $empresaId;
+        $this->aplicarCanal($dadosVenda, $venda);
         $venda->save();
 
         $this->salvarItens($itens, $venda);
+        $this->validarValorLiquido($venda);
 
         if ($venda->estoque_id) {
             $this->estoqueService->baixarVenda($venda, Estoque::findOrFail($venda->estoque_id));
@@ -47,6 +50,79 @@ class VendaService
         }
 
         return $venda;
+    }
+
+    /**
+     * Recria itens, baixa de estoque e lançamentos da venda a partir dos novos dados.
+     * Recusa a edição quando já existe pagamento de parcela (além da entrada/à vista),
+     * para não perder o histórico do que o cliente já pagou.
+     */
+    public function atualizar(Venda $venda, array $dadosVenda, array $itens): Venda
+    {
+        if ($this->temParcelaPaga($venda)) {
+            throw ValidationException::withMessages([
+                'venda' => 'Esta venda já tem parcelas pagas: não é possível alterar itens ou valores. Altere apenas a data e a forma de pagamento.',
+            ]);
+        }
+
+        $this->estoqueService->estornarVenda($venda);
+
+        ItemVenda::where('venda_id', $venda->id)->delete();
+        LancamentoFinanceiro::where('venda_id', $venda->id)->delete();
+        $venda->unsetRelation('itens');
+
+        $venda->estoque_id = $dadosVenda['estoque_id'] ?? $venda->estoque_id;
+        $venda->forma_pagamento_id = $dadosVenda['forma_pagamento_id'];
+        $venda->data_venda = $dadosVenda['data_venda'] ?? $venda->data_venda;
+        $venda->tipo_venda = $dadosVenda['tipo_venda'];
+        $venda->total = 0;
+        $venda->parcelas = null;
+        $venda->entrada = null;
+        $venda->valor_parcela = null;
+        $venda->primeiro_vencimento = null;
+        $this->aplicarCanal($dadosVenda, $venda);
+        $venda->save();
+
+        $this->salvarItens($itens, $venda);
+        $this->validarValorLiquido($venda);
+
+        if ($venda->estoque_id) {
+            $this->estoqueService->baixarVenda($venda, Estoque::findOrFail($venda->estoque_id));
+        }
+
+        $this->aplicarCondicaoPagamento($dadosVenda, $venda);
+        $venda->save();
+
+        $this->gerarLancamentos($venda);
+
+        return $venda;
+    }
+
+    /** Altera só data e forma de pagamento, sem mexer em itens, estoque ou parcelas. */
+    public function atualizarDados(Venda $venda, array $dadosVenda): Venda
+    {
+        $venda->forma_pagamento_id = $dadosVenda['forma_pagamento_id'] ?? $venda->forma_pagamento_id;
+        $venda->data_venda = $dadosVenda['data_venda'] ?? $venda->data_venda;
+        $venda->save();
+
+        return $venda;
+    }
+
+    /** Pagamentos que não são a entrada nem o recebimento à vista indicam cobrança já em andamento. */
+    public function temParcelaPaga(Venda $venda): bool
+    {
+        return $venda->lancamentos()
+            ->where('status', 'pago')
+            ->where('numero_parcela', '>', 0)
+            ->when($venda->tipo_venda === 'avista', fn ($q) => $q->whereRaw('1 = 0'))
+            ->exists();
+    }
+
+    /** Devolve o estoque baixado e apaga a venda (itens e lançamentos caem em cascata). */
+    public function excluir(Venda $venda): void
+    {
+        $this->estoqueService->estornarVenda($venda);
+        $venda->delete();
     }
 
     private function salvarItens(array $itens, Venda $venda): void
@@ -72,18 +148,42 @@ class VendaService
                 if (!$model) {
                     abort(404, "Produto com id {$itemDados['id']} não existe.");
                 }
-                $saldo = EstoqueSaldo::query()
-                    ->where('estoque_id', $venda->estoque_id)
-                    ->where('produto_id', $model->id)
-                    ->first();
-                // Produtos cadastrados antes do módulo de estoque não têm saldo/custo médio;
-                // nesse caso usa o preço de custo cadastrado no produto como fallback.
-                $item->custo_unitario = (float) ($saldo?->custo_medio ?: $model->valor ?? 0);
+                // Custo vem das entradas de estoque (custo médio do estoque da venda, com fallback).
+                $item->custo_unitario = $this->estoqueService->custoReferencia($model->id, $venda->estoque_id);
+                $item->custo_total = $item->custo_unitario * $item->quantidade;
                 $item->produto_id = $itemDados['id'];
             }
 
             $item->save();
             $venda->total += $itemDados['quantidade'] * $itemDados['valor'];
+        }
+    }
+
+    /** Canal de venda e custos digitados; fora de `venda_direta` o valor líquido do canal é a receita real. */
+    private function aplicarCanal(array $dadosVenda, Venda $venda): void
+    {
+        $canal = $dadosVenda['canal'] ?? $venda->canal ?? 'venda_direta';
+        $venda->canal = $canal;
+        $venda->valor_liquido_recebido = $canal === 'venda_direta' ? null : ($dadosVenda['valor_liquido_recebido'] ?? null);
+        $venda->custos_adicionais = $dadosVenda['custos_adicionais'] ?? 0;
+    }
+
+    private function validarValorLiquido(Venda $venda): void
+    {
+        if ($venda->canal === 'venda_direta') {
+            return;
+        }
+
+        if ($venda->valor_liquido_recebido === null) {
+            throw ValidationException::withMessages([
+                'valor_liquido_recebido' => 'Informe o valor recebido após os descontos do canal.',
+            ]);
+        }
+
+        if ((float) $venda->valor_liquido_recebido > (float) $venda->total) {
+            throw ValidationException::withMessages([
+                'valor_liquido_recebido' => 'O valor recebido não pode ser maior que o total da venda.',
+            ]);
         }
     }
 
@@ -94,7 +194,8 @@ class VendaService
 
             $venda->parcelas = $condicao['parcelas'];
             $venda->entrada = $condicao['entrada'];
-            $venda->valor_parcela = ($venda->total - $condicao['entrada']) / $condicao['parcelas'];
+            // Parcelas e entrada incidem sobre o que será recebido (líquido do canal, se houver)
+            $venda->valor_parcela = ($venda->receitaLiquida() - $condicao['entrada']) / $condicao['parcelas'];
             $venda->primeiro_vencimento = $condicao['primeiro_vencimento'];
         }
     }
@@ -108,8 +209,8 @@ class VendaService
                 'cliente_id' => $venda->cliente_id,
                 'numero_parcela' => 1,
                 'total_parcelas' => 1,
-                'valor' => $venda->total,
-                'valor_pago' => $venda->total,
+                'valor' => $venda->receitaLiquida(),
+                'valor_pago' => $venda->receitaLiquida(),
                 'data_vencimento' => $venda->data_venda,
                 'data_pagamento' => $venda->data_venda,
                 'status' => 'pago',
@@ -161,7 +262,9 @@ class VendaService
             ->where('gera_agendamento', true)
             ->get();
 
-        foreach ($servicosGeramAgendamento as $servico) {
+        // Cada serviço que gera agendamento vira uma agenda própria com os seus itens;
+        // produtos e itens avulsos da venda acompanham somente a primeira agenda.
+        foreach ($servicosGeramAgendamento->values() as $indice => $servico) {
             $agenda = Agenda::create([
                 'cliente_id' => $venda->cliente_id,
                 'venda_id' => $venda->id,
@@ -172,40 +275,35 @@ class VendaService
                 'empresa_id' => $empresaId,
             ]);
 
-            // Adicionar os itens de venda (produtos e serviços) ao agendamento
             foreach ($venda->itens as $itemVenda) {
-                if ($itemVenda->tipo === 'servico' && $itemVenda->servico_id === $servico->id) {
-                    \App\Models\AgendaItem::create([
-                        'agenda_id' => $agenda->id,
+                $dados = match (true) {
+                    $itemVenda->tipo === 'servico' && $itemVenda->servico_id === $servico->id => [
                         'tipo' => 'servico',
                         'servico_id' => $itemVenda->servico_id,
                         'descricao' => $itemVenda->servico->servico ?? null,
-                        'quantidade' => $itemVenda->quantidade,
-                        'valor_unitario' => $itemVenda->valor_unitario,
-                        'empresa_id' => $empresaId,
-                    ]);
-                } elseif ($itemVenda->tipo === 'produto') {
-                    // Incluir produtos também se estiverem na venda
-                    \App\Models\AgendaItem::create([
-                        'agenda_id' => $agenda->id,
+                    ],
+                    $indice === 0 && $itemVenda->tipo === 'produto' => [
                         'tipo' => 'produto',
                         'produto_id' => $itemVenda->produto_id,
                         'descricao' => $itemVenda->produto->produto ?? null,
-                        'quantidade' => $itemVenda->quantidade,
-                        'valor_unitario' => $itemVenda->valor_unitario,
-                        'empresa_id' => $empresaId,
-                    ]);
-                } elseif ($itemVenda->tipo === 'avulso') {
-                    // Incluir itens avulsos também
-                    \App\Models\AgendaItem::create([
-                        'agenda_id' => $agenda->id,
+                    ],
+                    $indice === 0 && $itemVenda->tipo === 'avulso' => [
                         'tipo' => 'avulso',
                         'descricao' => $itemVenda->descricao ?? 'Item avulso',
-                        'quantidade' => $itemVenda->quantidade,
-                        'valor_unitario' => $itemVenda->valor_unitario,
-                        'empresa_id' => $empresaId,
-                    ]);
+                    ],
+                    default => null,
+                };
+
+                if ($dados === null) {
+                    continue;
                 }
+
+                AgendaItem::create($dados + [
+                    'agenda_id' => $agenda->id,
+                    'quantidade' => $itemVenda->quantidade,
+                    'valor_unitario' => $itemVenda->valor_unitario,
+                    'empresa_id' => $empresaId,
+                ]);
             }
         }
     }

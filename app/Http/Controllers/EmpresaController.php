@@ -23,6 +23,7 @@ class EmpresaController extends Controller
             'cnpj' => 'required|string|unique:empresas,cnpj,' . $empresa->id,
             'contrato_ref' => 'nullable|string|max:255',
             'segmento' => 'sometimes|string|in:salao,barbearia,transporte,generico',
+            'mensagem_cobranca' => 'nullable|string|max:1000',
         ]);
 
         $empresa->update($validado);

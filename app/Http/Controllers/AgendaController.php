@@ -130,9 +130,25 @@ class AgendaController extends Controller
         $agenda->venda_id = $venda->id;
     }
 
-    public function index()
+    public function index(Request $request)
     {
+        $request->validate([
+            'inicio' => 'nullable|date',
+            'fim' => 'nullable|date',
+        ]);
+
+        // Com `inicio`/`fim` devolve só a janela pedida; agendamentos sem data
+        // (pendentes de horário) vêm sempre, para não sumirem da tela.
         $agendas = Agenda::with(['cliente', 'usuario', 'profissional.user', 'itens.servico', 'itens.produto'])
+            ->when($request->filled('inicio') || $request->filled('fim'), function ($q) use ($request) {
+                $q->where(function ($w) use ($request) {
+                    $w->whereNull('data_agendamento')
+                      ->orWhere(function ($d) use ($request) {
+                          $d->when($request->filled('inicio'), fn ($x) => $x->whereDate('data_agendamento', '>=', $request->inicio))
+                            ->when($request->filled('fim'), fn ($x) => $x->whereDate('data_agendamento', '<=', $request->fim));
+                      });
+                });
+            })
             ->orderBy('data_agendamento')
             ->orderBy('hora_agendamento')
             ->get();

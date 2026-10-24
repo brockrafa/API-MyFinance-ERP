@@ -18,3 +18,5 @@ yarn-error.log
 /.idea
 /.vscode
 /Deploy GCP
+# Dumps de banco (dados de produção) não devem ir para o repositório
+/*.sql

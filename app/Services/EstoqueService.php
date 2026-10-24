@@ -87,6 +87,53 @@ class EstoqueService
         }
     }
 
+    /**
+     * Custo unitário de referência de um produto, sempre vindo das entradas de estoque:
+     * 1) custo médio do estoque informado; 2) custo médio ponderado dos demais estoques;
+     * 3) custo da última entrada registrada; 4) zero, se o produto nunca teve entrada.
+     */
+    public function custoReferencia(int $produtoId, ?int $estoqueId = null): float
+    {
+        if ($estoqueId) {
+            $custo = (float) EstoqueSaldo::query()
+                ->where('estoque_id', $estoqueId)
+                ->where('produto_id', $produtoId)
+                ->value('custo_medio');
+
+            if ($custo > 0) {
+                return $custo;
+            }
+        }
+
+        $saldos = EstoqueSaldo::query()->where('produto_id', $produtoId)->get();
+        $quantidade = $saldos->sum('quantidade');
+
+        if ($quantidade > 0) {
+            return round($saldos->sum(fn (EstoqueSaldo $s) => $s->quantidade * (float) $s->custo_medio) / $quantidade, 4);
+        }
+
+        $ultimaEntrada = (float) ItemEntradaEstoque::query()
+            ->where('produto_id', $produtoId)
+            ->latest('id')
+            ->value('custo_unitario');
+
+        return $ultimaEntrada > 0 ? $ultimaEntrada : (float) $saldos->max('custo_medio');
+    }
+
+    /**
+     * Devolve ao estoque tudo o que a venda baixou (usado ao editar ou excluir a venda).
+     */
+    public function estornarVenda(Venda $venda): void
+    {
+        MovimentoEstoque::query()
+            ->where('origem_tipo', Venda::class)
+            ->where('origem_id', $venda->id)
+            ->where('tipo', 'venda')
+            ->whereNull('estornado_em')
+            ->get()
+            ->each(fn (MovimentoEstoque $movimento) => $this->estornarMovimento($movimento));
+    }
+
     public function registrarEntrada(Estoque $estoque, array $data): EntradaEstoque
     {
         return DB::transaction(function () use ($estoque, $data): EntradaEstoque {

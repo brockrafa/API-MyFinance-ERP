@@ -12,7 +12,7 @@ class ProdutoFactory extends Factory
 
     public function definition(): array
     {
-        $valor = $this->faker->randomFloat(2, 10, 500);
+        $precoVenda = $this->faker->randomFloat(2, 15, 700);
 
         return [
             'produto' => $this->faker->randomElement([
@@ -27,8 +27,7 @@ class ProdutoFactory extends Factory
                 'Smartphone',
                 'Tablet',
             ]) . ' ' . $this->faker->randomNumber(2),
-            'valor' => $valor,
-            'valor_venda' => round($valor * 1.35, 2),
+            'valor_venda' => $precoVenda,
             'categoria_id' => Categoria::inRandomOrder()->value('id') ?? Categoria::factory(),
         ];
     }

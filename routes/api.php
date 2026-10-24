@@ -21,6 +21,9 @@ use App\Http\Controllers\EntradaEstoqueController;
 use App\Http\Controllers\TransferenciaEstoqueController;
 use App\Http\Controllers\BaixaEstoqueController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\CobrancaController;
+use App\Http\Controllers\CronController;
+use App\Http\Controllers\RelatorioController;
 
 Route::middleware('auth:sanctum')->group(function () {
 
@@ -31,6 +34,20 @@ Route::middleware('auth:sanctum')->group(function () {
     // ── Roles e Permissões ────────────────────────
     Route::get('/roles', [RoleController::class, 'index']);
     Route::get('/roles/{role}', [RoleController::class, 'show']);
+
+    // ── Cobrança: devedores, extrato do cliente e recibos ──
+    // (as rotas fixas vêm antes do resource de clientes para não cair em clientes/{cliente})
+    Route::get('/clientes/devedores', [CobrancaController::class, 'devedores'])
+        ->middleware('permission:financeiro.lancamentos.view');
+
+    Route::get('/clientes/{id}/extrato', [CobrancaController::class, 'extrato'])
+        ->middleware('permission:financeiro.lancamentos.view');
+
+    Route::get('/vendas/{id}/recibo', [CobrancaController::class, 'reciboVenda'])
+        ->middleware('permission:vendas.view');
+
+    Route::get('/lancamentos-financeiros/{id}/recibo', [CobrancaController::class, 'reciboPagamento'])
+        ->middleware('permission:financeiro.lancamentos.view');
 
     // ── Clientes ──────────────────────────────────
     Route::resource('clientes', ClienteController::class)
@@ -154,6 +171,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::resource('vendas', VendaController::class)
         ->only(['destroy'])
         ->middleware('permission:vendas.delete');
+
+    // ── Relatórios ────────────────────────────────
+    Route::get('/relatorios/margem', [RelatorioController::class, 'margem'])
+        ->middleware('permission:relatorios.margem.view');
 
     // ── Agenda ────────────────────────────────────
     Route::resource('agendas', AgendaController::class)
@@ -291,3 +312,6 @@ Route::middleware('auth:sanctum')->group(function () {
 // Rotas públicas
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/registrar', [AuthController::class, 'registrarEmpresa']);
+
+// Gatilho do Cloud Scheduler (autenticado por X-Cron-Token, não por usuário)
+Route::post('/internal/cron/{tarefa}', [CronController::class, 'executar'])->middleware('throttle:10,1');

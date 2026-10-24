@@ -2,47 +2,65 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ListaPaginavel;
 use App\Models\Agenda;
 use App\Models\Venda;
 use App\Models\Cliente;
-use App\Models\Produto;
-use App\Models\ItemVenda;
-use App\Models\Servico;
 use App\Models\LancamentoFinanceiro;
-use App\Models\Estoque;
-use App\Models\EstoqueSaldo;
-use App\Services\EstoqueService;
 use App\Services\VendaService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
+use Illuminate\Validation\Rule;
 
 class VendaController extends Controller
 {
+    use ListaPaginavel;
+
     public function __construct(private VendaService $vendaService)
     {
     }
 
-    public function index()
+    public function index(Request $request)
     {
-        $vendas = Venda::with([
+        LancamentoFinanceiro::marcarAtrasados();
+
+        $consulta = Venda::with([
             'cliente:id,nome',
             'formaPagamento:id,descricao',
             'produtos',
             'lancamentos:id,venda_id,valor,valor_pago,status',
-        ])->select('id', 'cliente_id', 'agenda_id', 'data_venda', 'total', 'forma_pagamento_id', 'tipo_venda')
-          ->get();
+        ])->select('id', 'cliente_id', 'agenda_id', 'data_venda', 'total', 'forma_pagamento_id', 'tipo_venda', 'canal', 'valor_liquido_recebido', 'custos_adicionais')
+          ->when($request->filled('mes'), fn ($q) => $q->whereMonth('data_venda', (int) $request->mes))
+          ->when($request->filled('ano'), fn ($q) => $q->whereYear('data_venda', (int) $request->ano))
+          ->when($request->filled('canal'), fn ($q) => $q->where('canal', $request->canal))
+          ->when($request->filled('forma_pagamento'), fn ($q) => $q->whereHas(
+              'formaPagamento',
+              fn ($f) => $f->where('descricao', $request->forma_pagamento)
+          ))
+          ->when($request->filled('busca'), function ($q) use ($request) {
+              $termo = trim($request->busca);
+              $q->where(function ($w) use ($termo) {
+                  $w->where('id', $termo)
+                    ->orWhereHas('cliente', fn ($c) => $c->where('nome', 'like', '%' . $termo . '%'));
+              });
+          });
 
-        $vendas->each(function ($venda) {
+        match ($request->query('ordenacao', 'data_desc')) {
+            'data_asc' => $consulta->orderBy('data_venda')->orderBy('id'),
+            'total_asc' => $consulta->orderBy('total')->orderBy('id'),
+            'total_desc' => $consulta->orderByDesc('total')->orderByDesc('id'),
+            default => $consulta->orderByDesc('data_venda')->orderByDesc('id'),
+        };
+
+        return $this->listar($request, $consulta, function ($venda) {
             $venda->valor_pago = $venda->lancamentos->sum(function ($lancamento) {
                 return $lancamento->status === 'pago' ? $lancamento->valor_pago : 0;
             });
-            $venda->valor_pendente = max($venda->total - $venda->valor_pago, 0);
+            $venda->valor_pendente = max($venda->receitaLiquida() - $venda->valor_pago, 0);
+            $venda->taxa_canal = $venda->taxaCanal();
             $venda->unsetRelation('lancamentos');
         });
-
-        return response()->json($vendas, Response::HTTP_OK);
     }
 
     public function store(Request $request)
@@ -53,6 +71,11 @@ class VendaController extends Controller
                 'estoque_id' => ['required', 'integer', 'exists:estoques,id'],
                 'produtos' => ['required', 'array', 'min:1'],
                 'produtos.*.valor' => ['required', 'numeric', 'min:0'],
+                'canal' => ['nullable', Rule::in(Venda::CANAIS)],
+                'valor_liquido_recebido' => ['nullable', 'numeric', 'min:0', 'required_if:canal,mercado_livre,ecommerce'],
+                'custos_adicionais' => ['nullable', 'numeric', 'min:0'],
+            ], [
+                'valor_liquido_recebido.required_if' => 'Informe o valor recebido após os descontos do canal.',
             ]);
             $this->validarCliente($request->cliente_id);
 
@@ -63,6 +86,9 @@ class VendaController extends Controller
                 'data_venda' => $request->filled('data_venda') ? $request->data_venda : now()->toDateString(),
                 'tipo_venda' => $request->condicao_pagamento['tipo'],
                 'condicao_pagamento' => $request->condicao_pagamento,
+                'canal' => $request->input('canal', 'venda_direta'),
+                'valor_liquido_recebido' => $request->input('valor_liquido_recebido'),
+                'custos_adicionais' => $request->input('custos_adicionais', 0),
             ];
 
             $venda = $this->vendaService->criar($dadosVenda, $request->produtos, $request->user()->empresa_id);
@@ -70,7 +96,7 @@ class VendaController extends Controller
             DB::commit();
             return response()->json($venda, Response::HTTP_CREATED);
 
-        } catch (\Illuminate\Http\Exceptions\HttpResponseException $e) {
+        } catch (\Illuminate\Http\Exceptions\HttpResponseException | \Illuminate\Validation\ValidationException $e) {
             DB::rollBack();
             throw $e;
         } catch (\Exception $e) {
@@ -100,7 +126,8 @@ class VendaController extends Controller
         $venda->valor_pago = $venda->lancamentos->sum(function ($lancamento) {
             return $lancamento->status === 'pago' ? $lancamento->valor_pago : 0;
         });
-        $venda->valor_pendente = max($venda->total - $venda->valor_pago, 0);
+        $venda->valor_pendente = max($venda->receitaLiquida() - $venda->valor_pago, 0);
+        $venda->resumo_financeiro = $venda->resumoFinanceiro();
 
         return response()->json($venda, Response::HTTP_OK);
     }
@@ -112,29 +139,47 @@ class VendaController extends Controller
             $venda = Venda::find($id);
 
             if (!$venda) {
+                DB::rollBack();
                 return response()->json([
                     'errors' => "Venda com id {$id} não existe."
                 ], Response::HTTP_NOT_FOUND);
             }
 
-            $venda->total = 0;
-            $venda->forma_pagamento_id = $request->forma_pagamento['id'];
-            $venda->data_venda = $request->filled('data_venda') ? $request->data_venda : $venda->data_venda;
-            $venda->tipo_venda = $request->condicao_pagamento['tipo'];
+            $request->validate([
+                'estoque_id' => ['nullable', 'integer', 'exists:estoques,id'],
+                'produtos' => ['sometimes', 'array', 'min:1'],
+                'produtos.*.valor' => ['required_with:produtos', 'numeric', 'min:0'],
+                'canal' => ['nullable', Rule::in(Venda::CANAIS)],
+                'valor_liquido_recebido' => ['nullable', 'numeric', 'min:0', 'required_if:canal,mercado_livre,ecommerce'],
+                'custos_adicionais' => ['nullable', 'numeric', 'min:0'],
+            ], [
+                'valor_liquido_recebido.required_if' => 'Informe o valor recebido após os descontos do canal.',
+            ]);
 
-            // Remove itens e lançamentos antigos para recriar
-            ItemVenda::where('venda_id', $id)->delete();
-            LancamentoFinanceiro::where('venda_id', $id)->delete();
+            $dadosVenda = [
+                'estoque_id' => $request->estoque_id,
+                'forma_pagamento_id' => $request->forma_pagamento['id'] ?? $venda->forma_pagamento_id,
+                'data_venda' => $request->filled('data_venda') ? $request->data_venda : $venda->data_venda,
+                'tipo_venda' => $request->condicao_pagamento['tipo'] ?? $venda->tipo_venda,
+                'condicao_pagamento' => $request->condicao_pagamento,
+                'canal' => $request->input('canal', $venda->canal),
+                'valor_liquido_recebido' => $request->input('valor_liquido_recebido', $venda->valor_liquido_recebido),
+                'custos_adicionais' => $request->input('custos_adicionais', $venda->custos_adicionais ?? 0),
+            ];
 
-            $this->salvarItens($request->produtos, $venda);
-            $this->aplicarCondicaoPagamento($request, $venda);
-            $venda->save();
-
-            $this->gerarLancamentos($venda);
+            // Sem itens no corpo: só data e forma de pagamento (único caso permitido com parcelas já pagas).
+            if ($request->has('produtos')) {
+                $this->vendaService->atualizar($venda, $dadosVenda, $request->produtos);
+            } else {
+                $this->vendaService->atualizarDados($venda, $dadosVenda);
+            }
 
             DB::commit();
             return response()->json([], Response::HTTP_NO_CONTENT);
 
+        } catch (\Illuminate\Http\Exceptions\HttpResponseException | \Illuminate\Validation\ValidationException $e) {
+            DB::rollBack();
+            throw $e;
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
@@ -156,7 +201,7 @@ class VendaController extends Controller
         DB::transaction(function () use ($venda) {
             $agenda = $venda->agenda_id ? Agenda::find($venda->agenda_id) : null;
 
-            $venda->delete();
+            $this->vendaService->excluir($venda);
 
             if ($agenda) {
                 $agenda->update(['venda_id' => null, 'status' => 'agendado']);
@@ -166,123 +211,10 @@ class VendaController extends Controller
         return response()->json(null, Response::HTTP_NO_CONTENT);
     }
 
-    // -------------------------------------------------------------------------
-    // Métodos privados
-    // -------------------------------------------------------------------------
-
     private function validarCliente(int $clienteId): void
     {
         if (!Cliente::where('id', $clienteId)->exists()) {
             abort(Response::HTTP_NOT_FOUND, "Cliente com id {$clienteId} não existe.");
-        }
-    }
-
-    private function criarVenda(Request $request): Venda
-    {
-        $venda = new Venda();
-        $venda->cliente_id        = $request->cliente_id;
-        $venda->estoque_id        = $request->estoque_id;
-        $venda->total             = 0;
-        $venda->forma_pagamento_id = $request->forma_pagamento['id'];
-        $venda->data_venda        = $request->filled('data_venda') ? $request->data_venda : now()->toDateString();
-        $venda->tipo_venda        = $request->condicao_pagamento['tipo'];
-        $venda->save();
-
-        return $venda;
-    }
-
-    private function salvarItens(array $produtos, Venda $venda): void
-    {
-        foreach ($produtos as $produto) {
-            $model = $produto['tipo'] === 'servico' ? Servico::find($produto['id']) : Produto::find($produto['id']);
-
-            if (!$model) {
-                abort(Response::HTTP_NOT_FOUND, "Item com id {$produto['id']} não existe.");
-            }
-
-            $item = new ItemVenda();
-            $item->venda_id      = $venda->id;
-            $item->tipo          = $produto['tipo'];
-            $item->quantidade    = $produto['quantidade'];
-            $item->valor_unitario = (float) $produto['valor'];
-
-            if ($produto['tipo'] === 'servico') {
-                $item->servico_id = $produto['id'];
-            } else {
-                $saldo = EstoqueSaldo::query()
-                    ->where('estoque_id', $venda->estoque_id)
-                    ->where('produto_id', $model->id)
-                    ->first();
-                // Produtos cadastrados antes do módulo de estoque não têm saldo/custo médio;
-                // nesse caso usa o preço de custo cadastrado no produto como fallback.
-                $item->custo_unitario = (float) ($saldo?->custo_medio ?: $model->valor ?? 0);
-                $item->produto_id = $produto['id'];
-            }
-
-            $item->save();
-            $venda->total += $produto['quantidade'] * $produto['valor'];
-        }
-    }
-
-    private function aplicarCondicaoPagamento(Request $request, Venda $venda): void
-    {
-        if ($venda->tipo_venda === 'prazo') {
-            $condicao = $request->condicao_pagamento;
-
-            $venda->parcelas            = $condicao['parcelas'];
-            $venda->entrada             = $condicao['entrada'];
-            $venda->valor_parcela       = ($venda->total - $condicao['entrada']) / $condicao['parcelas'];
-            $venda->primeiro_vencimento = $condicao['primeiro_vencimento'];
-        }
-    }
-
-    private function gerarLancamentos(Venda $venda): void
-    {
-        if ($venda->tipo_venda === 'avista') {
-            // À vista: 1 parcela já paga
-            LancamentoFinanceiro::create([
-                'venda_id'       => $venda->id,
-                'cliente_id'     => $venda->cliente_id,
-                'numero_parcela' => 1,
-                'total_parcelas' => 1,
-                'valor'          => $venda->total,
-                'valor_pago'     => $venda->total,
-                'data_vencimento' => $venda->data_venda,
-                'data_pagamento' => $venda->data_venda,
-                'status'         => 'pago',
-            ]);
-
-            return;
-        }
-
-        // À prazo: gera entrada (se houver) + parcelas mensais
-        $primeiroVencimento = Carbon::parse($venda->primeiro_vencimento);
-
-        if ($venda->entrada > 0) {
-            LancamentoFinanceiro::create([
-                'venda_id'        => $venda->id,
-                'cliente_id'      => $venda->cliente_id,
-                'numero_parcela'  => 0, // 0 = entrada
-                'total_parcelas'  => $venda->parcelas,
-                'valor'           => $venda->entrada,
-                'valor_pago'      => $venda->entrada,
-                'data_vencimento' => $venda->data_venda,
-                'data_pagamento'  => $venda->data_venda,
-                'status'          => 'pago',
-            ]);
-        }
-
-        for ($i = 1; $i <= $venda->parcelas; $i++) {
-            LancamentoFinanceiro::create([
-                'venda_id'        => $venda->id,
-                'cliente_id'      => $venda->cliente_id,
-                'numero_parcela'  => $i,
-                'total_parcelas'  => $venda->parcelas,
-                'valor'           => $venda->valor_parcela,
-                'data_vencimento' => $primeiroVencimento->copy()->addMonths($i - 1),
-                'data_pagamento'  => null,
-                'status'          => 'pendente',
-            ]);
         }
     }
 }

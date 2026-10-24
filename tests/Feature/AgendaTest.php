@@ -50,7 +50,6 @@ class AgendaTest extends TestCase
         $produto = Produto::create([
             'produto' => 'Shampoo',
             'estoque' => 10,
-            'valor' => 20,
             'valor_venda' => 20,
             'categoria' => 1,
             'empresa_id' => $empresa->id,
@@ -58,18 +57,19 @@ class AgendaTest extends TestCase
 
         $response = $this->actingAs($usuario, 'sanctum')->postJson('/api/agendas', [
             'cliente_id' => $cliente->id,
-            'servico_id' => $servico->id,
-            'produto_id' => $produto->id,
             'usuario_id' => $usuario->id,
             'data_agendamento' => '2026-08-10',
             'hora_agendamento' => '14:30',
             'observacao' => 'Cliente preferencial',
+            'items' => [
+                ['id' => $servico->id, 'tipo' => 'servico', 'quantidade' => 1, 'valor' => 80],
+                ['id' => $produto->id, 'tipo' => 'produto', 'quantidade' => 1, 'valor' => 20],
+            ],
         ]);
 
         $response->assertStatus(201)
             ->assertJsonPath('cliente_id', $cliente->id)
-            ->assertJsonPath('servico_id', $servico->id)
-            ->assertJsonPath('produto_id', $produto->id)
-            ->assertJsonPath('usuario_id', $usuario->id);
+            ->assertJsonPath('usuario_id', $usuario->id)
+            ->assertJsonCount(2, 'itens');
     }
 }

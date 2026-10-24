@@ -20,7 +20,6 @@ class EstoqueServiceTest extends TestCase
         $produto = Produto::factory()->create([
             'empresa_id' => $empresa->id,
             'estoque' => 0,
-            'valor' => 100,
         ]);
         $estoque = Estoque::create([
             'empresa_id' => $empresa->id,

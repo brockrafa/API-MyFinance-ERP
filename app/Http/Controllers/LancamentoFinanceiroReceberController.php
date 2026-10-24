@@ -15,8 +15,10 @@ class LancamentoFinanceiroReceberController extends Controller
     {
         $mes = $request->query('mes', now()->format('Y-m'));
 
+        LancamentoFinanceiro::marcarAtrasados();
+
         $lancamentos = LancamentoFinanceiro::with([
-                'cliente:id,nome',
+                'cliente:id,nome,telefone',
                 'venda:id,data_venda,tipo_venda,total,parcelas,valor_parcela,entrada,forma_pagamento_id',
             ])
             ->where('tipo', 'entrada')
@@ -46,11 +48,6 @@ class LancamentoFinanceiroReceberController extends Controller
                     ->map(fn ($item) => $item->produto->produto ?? $item->servico->servico ?? 'Item')
                     ->implode(', ');
             }
-
-            if ($lancamento->status === 'pendente' && $lancamento->data_vencimento->isPast()) {
-                $lancamento->update(['status' => 'atrasado']);
-                $lancamento->status = 'atrasado';
-            }
         });
 
         return response()->json($lancamentos, Response::HTTP_OK);
@@ -58,7 +55,7 @@ class LancamentoFinanceiroReceberController extends Controller
     public function show($id)
     {
         $lancamento = LancamentoFinanceiro::with([
-            'cliente:id,nome',
+            'cliente:id,nome,telefone',
             'venda:id,data_venda,tipo_venda,total,parcelas,valor_parcela,entrada,forma_pagamento_id',
         ])->find($id);
 

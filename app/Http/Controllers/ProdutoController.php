@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ListaPaginavel;
 use Illuminate\Http\Request;
 use App\Models\Produto;
 use App\Models\Estoque;
@@ -11,20 +12,43 @@ use App\Models\MovimentoEstoque;
 use App\Services\EstoqueService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Response;
+use Illuminate\Validation\ValidationException;
 
 class ProdutoController extends Controller
 {
+    use ListaPaginavel;
+
     // Validação padrão para a criação e atualização de produtos
     private $validacaoPadrao = [
         'produto' => 'required|min:4',
-        'valor' => 'required|numeric',
-        'valor_venda' => 'required|numeric',
+        'valor_venda' => 'required|numeric|min:0',
         'categoria_id' => 'required|integer|exists:categorias,id'
     ];
 
-    public function index()
+    public function index(Request $request)
     {
-        return response()->json(Produto::with('categoria')->get(), Response::HTTP_OK);
+        $consulta = $this->aplicarBusca(
+            Produto::with('categoria')
+                ->select('produtos.*')
+                ->addSelect(['custo_medio' => $this->subconsultaCustoMedio()])
+                ->orderBy('id'),
+            $request,
+            ['produto']
+        );
+
+        return $this->listar($request, $consulta);
+    }
+
+    /**
+     * Custo médio do produto somando os estoques (ponderado pela quantidade).
+     * O custo não é cadastrado no produto: vem das entradas de estoque.
+     */
+    private function subconsultaCustoMedio()
+    {
+        return EstoqueSaldo::query()
+            ->selectRaw('CASE WHEN SUM(quantidade) > 0 THEN SUM(quantidade * custo_medio) / SUM(quantidade) ELSE MAX(custo_medio) END')
+            ->whereColumn('produto_id', 'produtos.id')
+            ->toBase();
     }
 
     public function store(Request $request)
@@ -32,12 +56,19 @@ class ProdutoController extends Controller
         $data = $request->validate(array_merge($this->validacaoPadrao, [
             'estoque_id' => ['nullable', 'integer', 'exists:estoques,id'],
             'quantidade_inicial' => ['nullable', 'integer', 'min:0'],
+            // Custo da entrada de saldo inicial: o custo do produto só existe nas entradas de estoque
+            'custo_inicial' => ['nullable', 'numeric', 'min:0'],
         ]), $this->messages);
+
+        if ((int) ($data['quantidade_inicial'] ?? 0) > 0 && (float) ($data['custo_inicial'] ?? 0) <= 0) {
+            throw ValidationException::withMessages([
+                'custo_inicial' => 'Informe o custo unitário da quantidade inicial.',
+            ]);
+        }
 
         $produto = DB::transaction(function () use ($data): Produto {
             $produto = Produto::create([
                 'produto' => $data['produto'],
-                'valor' => $data['valor'],
                 'valor_venda' => $data['valor_venda'],
                 'categoria_id' => $data['categoria_id'],
             ]);
@@ -54,7 +85,7 @@ class ProdutoController extends Controller
                     'itens' => [[
                         'produto_id' => $produto->id,
                         'quantidade' => $quantidade,
-                        'custo_unitario' => $produto->valor,
+                        'custo_unitario' => $data['custo_inicial'],
                     ]],
                 ]);
             }
@@ -91,7 +122,6 @@ class ProdutoController extends Controller
         $request->validate($this->validacaoPadrao,$this->messages);
         $produto->update($request->only([
             'produto',
-            'valor',
             'valor_venda',
             'categoria_id',
         ]));

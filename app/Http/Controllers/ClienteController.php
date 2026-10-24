@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ListaPaginavel;
 use Illuminate\Http\Request;
 use App\Models\Cliente;
 use Illuminate\Http\Response;
@@ -9,13 +10,21 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 
 class ClienteController extends Controller
 {
+    use ListaPaginavel;
+
     private array $validacaoPadrao = [
         'nome' => 'required|string|min:4'
     ];
 
-    public function index()
+    public function index(Request $request)
     {
-        return response()->json(Cliente::all(), Response::HTTP_OK);
+        $consulta = $this->aplicarBusca(
+            Cliente::query()->orderBy('id'),
+            $request,
+            ['nome', 'email', 'telefone', 'cidade', 'bairro']
+        );
+
+        return $this->listar($request, $consulta);
     }
 
     public function store(Request $request)

@@ -39,6 +39,21 @@ class LancamentoFinanceiro extends Model
         'valor'           => 'decimal:2',
     ];
 
+    /**
+     * Marca como atrasadas as parcelas a receber pendentes já vencidas.
+     * Sem usuário logado (agendador), use $todasEmpresas = true.
+     */
+    public static function marcarAtrasados(bool $todasEmpresas = false): int
+    {
+        $consulta = $todasEmpresas ? static::withoutGlobalScopes() : static::query();
+
+        return $consulta
+            ->where('tipo', 'entrada')
+            ->where('status', 'pendente')
+            ->whereDate('data_vencimento', '<', today())
+            ->update(['status' => 'atrasado']);
+    }
+
     public function venda(): BelongsTo
     {
         return $this->belongsTo(Venda::class);
