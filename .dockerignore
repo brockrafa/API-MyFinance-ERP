@@ -13,3 +13,6 @@ storage/framework/views
 README.md
 tests
 .phpunit.result.cache
+*.sql
+.env-example
+.phpunit.result.cache
