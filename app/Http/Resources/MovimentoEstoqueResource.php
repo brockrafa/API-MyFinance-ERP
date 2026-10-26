@@ -16,6 +16,7 @@ class MovimentoEstoqueResource extends JsonResource
     {
         $tipoLabels = [
             'entrada' => 'Entrada',
+            'saldo_inicial' => 'Saldo inicial',
             'baixa_manual' => 'Baixa Manual',
             'venda' => 'Venda',
             'transferencia_saida' => 'Transferência (Saída)',
@@ -25,6 +26,7 @@ class MovimentoEstoqueResource extends JsonResource
 
         $tipoCores = [
             'entrada' => 'success',
+            'saldo_inicial' => 'success',
             'baixa_manual' => 'danger',
             'venda' => 'warning',
             'transferencia_saida' => 'info',
@@ -68,6 +70,12 @@ class MovimentoEstoqueResource extends JsonResource
             'movimentado_em_breve' => $this->movimentado_em?->diffForHumans(),
             'estornado_em' => $this->estornado_em?->format('Y-m-d H:i:s'),
             'esta_estornado' => $this->estornado_em !== null,
+            'pode_corrigir_custo' => $this->permiteCorrigirCusto(),
+            'custo_corrigido' => $this->whenLoaded('ajustesCusto', fn () => $this->ajustesCusto->isNotEmpty()),
+            // Custo unitário antes da primeira correção (para mostrar "era R$ X")
+            'custo_original' => $this->whenLoaded('ajustesCusto', fn () => $this->ajustesCusto->isNotEmpty()
+                ? (float) $this->ajustesCusto->first()->custo_anterior
+                : null),
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];

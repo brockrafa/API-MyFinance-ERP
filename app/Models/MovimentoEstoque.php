@@ -6,6 +6,7 @@ use App\Models\Concerns\HasEmpresaScope;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class MovimentoEstoque extends Model
 {
@@ -56,6 +57,19 @@ class MovimentoEstoque extends Model
     public function estornadoPor(): BelongsTo
     {
         return $this->belongsTo(User::class, 'estornado_por_id');
+    }
+
+    public function ajustesCusto(): HasMany
+    {
+        return $this->hasMany(AjusteCustoEstoque::class, 'movimento_estoque_id')->orderBy('id');
+    }
+
+    /** Entradas (e saldo inicial) ainda válidas podem ter o custo corrigido. */
+    public function permiteCorrigirCusto(): bool
+    {
+        return in_array($this->tipo, ['entrada', 'saldo_inicial'], true)
+            && (int) $this->quantidade > 0
+            && !$this->estaEstornado();
     }
 
     public function estaEstornado(): bool

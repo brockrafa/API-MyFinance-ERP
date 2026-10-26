@@ -100,6 +100,16 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/estoques/movimentos/{movimento}', [EstoqueController::class, 'destroyMovimento'])
         ->middleware('permission:estoque.delete');
 
+    // Correção retroativa do custo de uma entrada (com prévia das vendas afetadas)
+    Route::get('/estoques/movimentos/{movimento}/custo', [EstoqueController::class, 'detalhesCusto'])
+        ->middleware('permission:estoque.edit');
+
+    Route::post('/estoques/movimentos/{movimento}/corrigir-custo/previa', [EstoqueController::class, 'previaCorrecaoCusto'])
+        ->middleware('permission:estoque.edit');
+
+    Route::post('/estoques/movimentos/{movimento}/corrigir-custo', [EstoqueController::class, 'corrigirCusto'])
+        ->middleware('permission:estoque.edit');
+
     Route::resource('estoques', EstoqueController::class)
         ->only(['store'])
         ->middleware('permission:estoque.create');

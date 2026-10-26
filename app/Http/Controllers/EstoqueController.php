@@ -7,6 +7,7 @@ use App\Http\Resources\EstoqueSaldoResource;
 use App\Http\Resources\MovimentoEstoqueResource;
 use App\Models\Estoque;
 use App\Models\MovimentoEstoque;
+use App\Services\CustoEstoqueService;
 use App\Services\EstoqueService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -61,7 +62,7 @@ class EstoqueController extends Controller
             ->when($filtros['tipo'] ?? null, fn ($query, $tipo) => $query->where('tipo', $tipo))
             ->when($filtros['data_inicio'] ?? null, fn ($query, $data) => $query->whereDate('movimentado_em', '>=', $data))
             ->when($filtros['data_fim'] ?? null, fn ($query, $data) => $query->whereDate('movimentado_em', '<=', $data))
-            ->with(['produto', 'usuario'])
+            ->with(['produto', 'usuario', 'ajustesCusto'])
             ->latest('movimentado_em')
             ->latest('id')
             ->paginate($filtros['per_page'] ?? 20);
@@ -110,6 +111,51 @@ class EstoqueController extends Controller
             'success' => true,
             'data' => $validacoes,
         ]);
+    }
+
+    /** Dados atuais da entrada (custo, frete, quantidade) para o formulário de correção. */
+    public function detalhesCusto(MovimentoEstoque $movimento, CustoEstoqueService $custo)
+    {
+        return response()->json($custo->detalhes($movimento), Response::HTTP_OK);
+    }
+
+    /** Mostra o impacto de corrigir o custo da entrada (custo médio e vendas afetadas), sem gravar. */
+    public function previaCorrecaoCusto(Request $request, MovimentoEstoque $movimento, CustoEstoqueService $custo)
+    {
+        $dados = $request->validate([
+            'custo_unitario' => ['required', 'numeric', 'gt:0'],
+            'frete_item' => ['nullable', 'numeric', 'min:0'],
+        ]);
+
+        return response()->json(
+            $custo->prever($movimento, (float) $dados['custo_unitario'], isset($dados['frete_item']) ? (float) $dados['frete_item'] : null),
+            Response::HTTP_OK
+        );
+    }
+
+    /** Aplica a correção de custo da entrada e refaz o custo das vendas escolhidas. */
+    public function corrigirCusto(Request $request, MovimentoEstoque $movimento, CustoEstoqueService $custo)
+    {
+        $dados = $request->validate([
+            'custo_unitario' => ['required', 'numeric', 'gt:0'],
+            'frete_item' => ['nullable', 'numeric', 'min:0'],
+            'motivo' => ['required', 'string', 'min:3', 'max:255'],
+            'vendas' => ['nullable', 'array'],
+            'vendas.*' => ['integer'],
+        ], [
+            'motivo.required' => 'Informe o motivo da correção.',
+            'motivo.min' => 'Descreva o motivo da correção.',
+        ]);
+
+        $resultado = $custo->aplicar(
+            $movimento,
+            (float) $dados['custo_unitario'],
+            isset($dados['frete_item']) ? (float) $dados['frete_item'] : null,
+            $dados['motivo'],
+            $dados['vendas'] ?? []
+        );
+
+        return response()->json($resultado, Response::HTTP_OK);
     }
 
     public function destroyMovimento(MovimentoEstoque $movimento)
